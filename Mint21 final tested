@@ -427,6 +427,17 @@ printStatus "IP spoofing prevention enabled."
 sysctl --system
 printStatus "Kernel security settings applied."
 
+# Verify ASLR is enabled
+printStatus "Verifying ASLR (Address Space Layout Randomization)..."
+ASLR_VALUE=$(sysctl kernel.randomize_va_space | awk '{print $3}')
+if [[ "$ASLR_VALUE" == "2" ]]; then
+    printStatus "✓ ASLR is enabled (value: 2)"
+    echo "ASLR Status: ENABLED (value: 2)" > "$LOG_DIR/aslr_status.log"
+else
+    printWarning "ASLR may not be properly enabled (value: $ASLR_VALUE)"
+    echo "ASLR Status: Value is $ASLR_VALUE (should be 2)" > "$LOG_DIR/aslr_status.log"
+fi
+
 # ============================================
 # FIREWALL CONFIGURATION
 # ============================================
@@ -589,19 +600,66 @@ for tool in "${hackingTools[@]}"; do
     fi
 done
 
+# Specifically check for doona
+if dpkg -l 2>/dev/null | grep -qw "doona"; then
+    apt-get purge -y doona 2>/dev/null || true
+    printStatus "Removed prohibited software: doona"
+fi
+
 # Log any remaining suspicious packages
 dpkg -l | egrep -i "crack|hack" | grep -v "libcrack2\|cracklib" > "$LOG_DIR/potential_hacking_tools.log" || true
 printStatus "Hacking tools scan complete. Check $LOG_DIR/potential_hacking_tools.log"
 
 # ============================================
-# PROHIBITED FILES SEARCH
+# PROHIBITED FILES SEARCH AND REMOVAL
 # ============================================
-printSection "SEARCHING FOR PROHIBITED FILES"
+printSection "SEARCHING FOR AND REMOVING PROHIBITED FILES"
 
 printStatus "Scanning for prohibited media files..."
 echo "This may take several minutes..."
 
-# Scan for media files
+# Update locate database first
+printStatus "Updating file database for faster searches..."
+updatedb 2>/dev/null || printWarning "Could not update locate database"
+
+# Scan for OGG files (prohibited audio format)
+printStatus "Searching for prohibited OGG files..."
+locate '*.ogg' 2>/dev/null > "$LOG_DIR/ogg_files_found.log" || touch "$LOG_DIR/ogg_files_found.log"
+oggCount=$(wc -l < "$LOG_DIR/ogg_files_found.log")
+if [[ $oggCount -gt 0 ]]; then
+    printWarning "Found $oggCount OGG files. Listing in log..."
+    cat "$LOG_DIR/ogg_files_found.log"
+    
+    read -p "Delete all OGG files? (yes/no): " deleteOgg
+    if [[ "$deleteOgg" == "yes" ]]; then
+        while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+                rm -f "$file" 2>/dev/null && printStatus "Deleted: $file"
+            fi
+        done < "$LOG_DIR/ogg_files_found.log"
+        printStatus "All OGG files removed."
+    fi
+else
+    printStatus "No OGG files found."
+fi
+
+# Scan for ZIP archives (potential prohibited software)
+printStatus "Searching for ZIP archives..."
+locate '*.zip' 2>/dev/null > "$LOG_DIR/zip_files_found.log" || touch "$LOG_DIR/zip_files_found.log"
+zipCount=$(wc -l < "$LOG_DIR/zip_files_found.log")
+if [[ $zipCount -gt 0 ]]; then
+    printWarning "Found $zipCount ZIP files. Check $LOG_DIR/zip_files_found.log"
+    printWarning "Review for prohibited software archives (pyrdp, exploits, etc.)"
+    
+    # Look for specific prohibited archives
+    grep -iE 'pyrdp|exploit|hack|crack|metasploit' "$LOG_DIR/zip_files_found.log" > "$LOG_DIR/suspicious_zips.log" 2>/dev/null || true
+    if [[ -s "$LOG_DIR/suspicious_zips.log" ]]; then
+        printWarning "Suspicious ZIP files found:"
+        cat "$LOG_DIR/suspicious_zips.log"
+    fi
+fi
+
+# Scan for all media files
 find /home -type f \( \
     -iname "*.mp3" -o -iname "*.mp4" -o -iname "*.avi" -o -iname "*.mkv" \
     -o -iname "*.mov" -o -iname "*.wav" -o -iname "*.flac" -o -iname "*.ogg" \
@@ -609,18 +667,18 @@ find /home -type f \( \
 \) 2>/dev/null > "$LOG_DIR/media_files_found.log" || true
 
 mediaCount=$(wc -l < "$LOG_DIR/media_files_found.log")
-printStatus "Found $mediaCount media files. Check $LOG_DIR/media_files_found.log"
+printStatus "Found $mediaCount total media files. Check $LOG_DIR/media_files_found.log"
 
 # Scan for suspicious files
 find /home -type f \( \
     -iname "*crack*" -o -iname "*hack*" -o -iname "*.pcap" \
-    -o -iname "*exploit*" -o -iname "*backdoor*" \
+    -o -iname "*exploit*" -o -iname "*backdoor*" -o -iname "*.sh.bak" \
 \) 2>/dev/null > "$LOG_DIR/suspicious_files.log" || true
 
 suspCount=$(wc -l < "$LOG_DIR/suspicious_files.log")
 printStatus "Found $suspCount suspicious files. Check $LOG_DIR/suspicious_files.log"
 
-printWarning "MANUAL STEP: Review and delete prohibited files as needed"
+printWarning "MANUAL STEP: Review and delete remaining prohibited files as needed"
 
 # ============================================
 # SYSTEM UPDATES
@@ -666,9 +724,123 @@ EOF
 printStatus "Automatic security updates enabled."
 
 # ============================================
-# ADDITIONAL HARDENING
+# BACKDOOR DETECTION
 # ============================================
-printSection "ADDITIONAL SYSTEM HARDENING"
+printSection "BACKDOOR DETECTION"
+
+printStatus "Scanning for potential backdoors and suspicious activity..."
+
+# Create backdoor report file
+BACKDOOR_REPORT="$LOG_DIR/backdoor_detection_report.txt"
+echo "=== BACKDOOR DETECTION REPORT ===" > "$BACKDOOR_REPORT"
+echo "Generated: $(date)" >> "$BACKDOOR_REPORT"
+echo "" >> "$BACKDOOR_REPORT"
+
+# 1. Check for listening ports and processes
+printStatus "Checking for suspicious listening ports..."
+echo "### LISTENING PORTS ###" >> "$BACKDOOR_REPORT"
+ss -tulpn | grep LISTEN >> "$BACKDOOR_REPORT" 2>&1
+echo "" >> "$BACKDOOR_REPORT"
+
+# 2. Check for Python processes (common for backdoors)
+printStatus "Checking for Python processes..."
+echo "### PYTHON PROCESSES ###" >> "$BACKDOOR_REPORT"
+ps aux | grep python | grep -v grep >> "$BACKDOOR_REPORT" 2>&1 || echo "No Python processes found" >> "$BACKDOOR_REPORT"
+echo "" >> "$BACKDOOR_REPORT"
+
+# 3. Check for suspicious bash/sh processes
+printStatus "Checking for suspicious shell processes..."
+echo "### SHELL PROCESSES ###" >> "$BACKDOOR_REPORT"
+ps aux | grep -E 'bash|sh|nc|netcat' | grep -v grep >> "$BACKDOOR_REPORT" 2>&1
+echo "" >> "$BACKDOOR_REPORT"
+
+# 4. Check for suspicious cron jobs
+printStatus "Checking crontab entries..."
+echo "### CRONTAB ENTRIES ###" >> "$BACKDOOR_REPORT"
+for user in $(cut -f1 -d: /etc/passwd); do
+    crontab -u "$user" -l 2>/dev/null | grep -v '^#' >> "$BACKDOOR_REPORT" 2>&1 && echo "User: $user" >> "$BACKDOOR_REPORT"
+done
+echo "" >> "$BACKDOOR_REPORT"
+
+# 5. Check system-wide cron jobs
+echo "### SYSTEM CRON JOBS ###" >> "$BACKDOOR_REPORT"
+ls -la /etc/cron.* >> "$BACKDOOR_REPORT" 2>&1
+echo "" >> "$BACKDOOR_REPORT"
+
+# 6. Check for suspicious services
+printStatus "Checking for suspicious systemd services..."
+echo "### SUSPICIOUS SERVICES ###" >> "$BACKDOOR_REPORT"
+systemctl list-units --type=service --state=running | grep -vE 'systemd|dbus|getty|console|accounts|udev|network|bluetooth|cups' >> "$BACKDOOR_REPORT" 2>&1
+echo "" >> "$BACKDOOR_REPORT"
+
+# 7. Check /tmp for suspicious files
+printStatus "Checking /tmp for suspicious files..."
+echo "### FILES IN /TMP ###" >> "$BACKDOOR_REPORT"
+ls -lah /tmp >> "$BACKDOOR_REPORT" 2>&1
+echo "" >> "$BACKDOOR_REPORT"
+
+# 8. Check for suspicious scripts in common locations
+printStatus "Checking for suspicious scripts..."
+echo "### SUSPICIOUS SCRIPTS ###" >> "$BACKDOOR_REPORT"
+find /tmp /var/tmp /dev/shm -type f \( -name "*.sh" -o -name "*.py" -o -name "*.pl" \) -ls >> "$BACKDOOR_REPORT" 2>&1 || echo "No suspicious scripts found in temp locations" >> "$BACKDOOR_REPORT"
+echo "" >> "$BACKDOOR_REPORT"
+
+# 9. Check for reverse shell indicators
+printStatus "Checking for reverse shell indicators..."
+echo "### REVERSE SHELL INDICATORS ###" >> "$BACKDOOR_REPORT"
+ps aux | grep -E 'nc.*-e|/bin/bash.*[0-9]{1,5}|python.*socket|perl.*socket' | grep -v grep >> "$BACKDOOR_REPORT" 2>&1 || echo "No obvious reverse shell indicators found" >> "$BACKDOOR_REPORT"
+echo "" >> "$BACKDOOR_REPORT"
+
+# 10. Check for unauthorized SSH keys
+printStatus "Checking for unauthorized SSH keys..."
+echo "### SSH AUTHORIZED KEYS ###" >> "$BACKDOOR_REPORT"
+for home in /home/*; do
+    if [[ -f "$home/.ssh/authorized_keys" ]]; then
+        echo "Keys for user $(basename $home):" >> "$BACKDOOR_REPORT"
+        cat "$home/.ssh/authorized_keys" >> "$BACKDOOR_REPORT" 2>&1
+        echo "" >> "$BACKDOOR_REPORT"
+    fi
+done
+echo "" >> "$BACKDOOR_REPORT"
+
+# 11. Check rc.local for backdoors
+printStatus "Checking rc.local for suspicious entries..."
+echo "### RC.LOCAL CONTENTS ###" >> "$BACKDOOR_REPORT"
+if [[ -f /etc/rc.local ]]; then
+    cat /etc/rc.local >> "$BACKDOOR_REPORT" 2>&1
+else
+    echo "/etc/rc.local does not exist" >> "$BACKDOOR_REPORT"
+fi
+echo "" >> "$BACKDOOR_REPORT"
+
+# 12. Check for SUID/SGID binaries (potential privilege escalation)
+printStatus "Checking for unusual SUID/SGID binaries..."
+echo "### UNUSUAL SUID/SGID BINARIES ###" >> "$BACKDOOR_REPORT"
+find / -type f \( -perm -4000 -o -perm -2000 \) -ls 2>/dev/null | grep -vE 'sudo|passwd|su|ping|mount|umount|fusermount' | head -20 >> "$BACKDOOR_REPORT" 2>&1
+echo "" >> "$BACKDOOR_REPORT"
+
+# Summary
+echo "" >> "$BACKDOOR_REPORT"
+echo "=== DETECTION COMPLETE ===" >> "$BACKDOOR_REPORT"
+echo "Review the findings above carefully." >> "$BACKDOOR_REPORT"
+echo "Look for:" >> "$BACKDOOR_REPORT"
+echo "- Unexpected listening ports (especially high ports 4444, 8080, etc.)" >> "$BACKDOOR_REPORT"
+echo "- Python/shell scripts running from /tmp or unusual locations" >> "$BACKDOOR_REPORT"
+echo "- Suspicious cron jobs" >> "$BACKDOOR_REPORT"
+echo "- Unauthorized SSH keys" >> "$BACKDOOR_REPORT"
+echo "- Processes connecting to external IPs" >> "$BACKDOOR_REPORT"
+
+printStatus "Backdoor detection complete. Report saved to: $BACKDOOR_REPORT"
+printWarning "CRITICAL: Review $BACKDOOR_REPORT for suspicious findings!"
+
+# Display summary to terminal
+echo -e "\n${YELLOW}Quick Backdoor Check Summary:${NC}"
+echo "Listening ports:"
+ss -tulpn | grep LISTEN | wc -l | xargs echo "  Total:"
+echo "Python processes:"
+ps aux | grep python | grep -v grep | wc -l | xargs echo "  Count:"
+echo ""
+printWarning "Full report available at: $BACKDOOR_REPORT"
 
 # Disable core dumps
 if ! grep -q "hard core" /etc/security/limits.conf; then
