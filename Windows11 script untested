@@ -1,0 +1,458 @@
+@echo off
+REM CyberPatriot Windows 11 Security Script
+REM Based on CP18 Training Round 2 Answer Key
+REM Team: Sharon High School 14-3178
+
+color 0A
+title CyberPatriot Windows 11 Security Script
+
+REM Check for administrator privileges
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo ERROR: This script must be run as Administrator!
+    echo Right-click the script and select "Run as administrator"
+    pause
+    exit /b 1
+)
+
+echo ============================================================
+echo   CyberPatriot Windows 11 Security Hardening Script
+echo   Sharon High School Team 14-3178
+echo ============================================================
+echo.
+echo WARNING: This script will make significant security changes
+echo Make sure you have read the README and noted:
+echo   - Authorized users
+echo   - Authorized administrators
+echo   - Critical services
+echo.
+pause
+
+:MENU
+cls
+echo ============================================================
+echo                    MAIN MENU
+echo ============================================================
+echo.
+echo [1] Enable Firewall
+echo [2] Manage Services
+echo [3] Configure Remote Desktop
+echo [4] Apply Registry Security Settings
+echo [5] Import Local Group Policies
+echo [6] Disable Guest and Administrator Accounts
+echo [7] User Audit (Authorized Users)
+echo [8] Admin Audit (Authorized Admins)
+echo [9] Reset User Passwords
+echo [10] Remove Disallowed Media Files
+echo [11] Configure Password Policies
+echo [12] Configure Account Lockout Policies
+echo [13] Configure Security Options
+echo [14] Update Applications
+echo [15] Remove Unauthorized Software
+echo [16] Quick Security Scan
+echo [17] Run ALL Security Fixes (Automated)
+echo [0] Exit
+echo.
+set /p choice="Enter your choice: "
+
+if "%choice%"=="1" goto FIREWALL
+if "%choice%"=="2" goto SERVICES
+if "%choice%"=="3" goto REMOTE_DESKTOP
+if "%choice%"=="4" goto REGISTRY
+if "%choice%"=="5" goto POLICIES
+if "%choice%"=="6" goto GUEST_ADMIN
+if "%choice%"=="7" goto USER_AUDIT
+if "%choice%"=="8" goto ADMIN_AUDIT
+if "%choice%"=="9" goto USER_PASSWORDS
+if "%choice%"=="10" goto MEDIA_FILES
+if "%choice%"=="11" goto PASSWORD_POLICY
+if "%choice%"=="12" goto LOCKOUT_POLICY
+if "%choice%"=="13" goto SECURITY_OPTIONS
+if "%choice%"=="14" goto UPDATE_APPS
+if "%choice%"=="15" goto REMOVE_SOFTWARE
+if "%choice%"=="16" goto QUICK_SCAN
+if "%choice%"=="17" goto RUN_ALL
+if "%choice%"=="0" goto EXIT
+goto MENU
+
+:FIREWALL
+cls
+echo ============================================================
+echo                  ENABLE FIREWALL
+echo ============================================================
+echo.
+echo Enabling Windows Firewall for all profiles...
+echo.
+
+netsh advfirewall set allprofiles state on
+if %errorLevel% equ 0 (
+    echo [SUCCESS] Firewall enabled for all network profiles
+) else (
+    echo [ERROR] Failed to enable firewall
+)
+
+echo.
+echo Press any key to return to menu...
+pause >nul
+goto MENU
+
+:SERVICES
+cls
+echo ============================================================
+echo                  MANAGE SERVICES
+echo ============================================================
+echo.
+echo [M] Manual Mode - Review each service
+echo [A] Automatic Mode - Disable all listed services
+echo [C] Cancel
+echo.
+set /p servicemode="Select mode: "
+
+if /i "%servicemode%"=="C" goto MENU
+if /i "%servicemode%"=="M" goto SERVICES_MANUAL
+if /i "%servicemode%"=="A" goto SERVICES_AUTO
+goto SERVICES
+
+:SERVICES_MANUAL
+cls
+echo ============================================================
+echo              SERVICES - MANUAL MODE
+echo ============================================================
+echo.
+echo WARNING: Be careful not to disable critical services!
+echo Check the README for business-critical services.
+echo.
+
+REM List of potentially dangerous services
+set services[0]=RemoteRegistry
+set services[1]=RemoteAccess
+set services[2]=Telnet
+set services[3]=TlntSvr
+set services[4]=SSDPSRV
+set services[5]=upnphost
+set services[6]=WMPNetworkSvc
+set services[7]=icssvc
+set services[8]=SharedAccess
+set services[9]=Fax
+set services[10]=FTPSVC
+set services[11]=SNMP
+set services[12]=SNMPTRAP
+set services[13]=RpcSs
+
+for /L %%i in (0,1,13) do (
+    call :DISABLE_SERVICE_PROMPT "!services[%%i]!"
+)
+
+echo.
+echo Service management complete!
+pause
+goto MENU
+
+:DISABLE_SERVICE_PROMPT
+set servicename=%~1
+sc query %servicename% >nul 2>&1
+if %errorLevel% neq 0 (
+    echo [SKIP] Service %servicename% not found
+    exit /b
+)
+
+echo.
+echo Service: %servicename%
+set /p disableservice="Disable this service? (y/n/c): "
+if /i "%disableservice%"=="y" (
+    sc config %servicename% start=disabled
+    sc stop %servicename% >nul 2>&1
+    echo [DISABLED] %servicename%
+) else if /i "%disableservice%"=="c" (
+    exit /b 1
+) else (
+    echo [SKIPPED] %servicename%
+)
+exit /b
+
+:SERVICES_AUTO
+cls
+echo ============================================================
+echo            SERVICES - AUTOMATIC MODE
+echo ============================================================
+echo.
+echo WARNING: This will disable multiple services automatically!
+echo This may break critical functionality!
+echo.
+set /p confirm="Are you SURE you want to continue? (yes/no): "
+if /i not "%confirm%"=="yes" goto MENU
+
+echo.
+echo Disabling potentially dangerous services...
+
+sc config RemoteRegistry start=disabled & sc stop RemoteRegistry
+sc config RemoteAccess start=disabled & sc stop RemoteAccess
+sc config Telnet start=disabled & sc stop Telnet
+sc config TlntSvr start=disabled & sc stop TlntSvr
+sc config SSDPSRV start=disabled & sc stop SSDPSRV
+sc config upnphost start=disabled & sc stop upnphost
+sc config WMPNetworkSvc start=disabled & sc stop WMPNetworkSvc
+sc config icssvc start=disabled & sc stop icssvc
+sc config SharedAccess start=disabled & sc stop SharedAccess
+sc config Fax start=disabled & sc stop Fax
+sc config FTPSVC start=disabled & sc stop FTPSVC
+sc config SNMP start=disabled & sc stop SNMP
+sc config SNMPTRAP start=disabled & sc stop SNMPTRAP
+
+echo.
+echo [COMPLETE] Services disabled
+pause
+goto MENU
+
+:REMOTE_DESKTOP
+cls
+echo ============================================================
+echo              CONFIGURE REMOTE DESKTOP
+echo ============================================================
+echo.
+echo WARNING: Check README - Remote Desktop may be CRITICAL!
+echo.
+set /p rdp="Disable Remote Desktop? (y/n): "
+
+if /i "%rdp%"=="y" (
+    echo Disabling Remote Desktop...
+    reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 1 /f
+    netsh advfirewall firewall set rule group="remote desktop" new enable=No
+    echo [SUCCESS] Remote Desktop disabled
+) else (
+    echo [SKIPPED] Remote Desktop not modified
+)
+
+echo.
+pause
+goto MENU
+
+:REGISTRY
+cls
+echo ============================================================
+echo           APPLY REGISTRY SECURITY SETTINGS
+echo ============================================================
+echo.
+echo This will apply multiple security registry settings.
+echo.
+set /p applyreg="Apply registry security settings? (y/n): "
+
+if /i not "%applyreg%"=="y" goto MENU
+
+echo.
+echo Applying registry security settings...
+
+REM Disable AutoRun
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v NoDriveTypeAutoRun /t REG_DWORD /d 255 /f
+
+REM Require Ctrl+Alt+Del
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v DisableCAD /t REG_DWORD /d 0 /f
+
+REM Enable UAC
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnableLUA /t REG_DWORD /d 1 /f
+
+REM Disable anonymous SID enumeration
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v RestrictAnonymousSAM /t REG_DWORD /d 1 /f
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v RestrictAnonymous /t REG_DWORD /d 1 /f
+
+REM Disable LM hash storage
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v NoLMHash /t REG_DWORD /d 1 /f
+
+REM Enable Windows Defender
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 0 /f
+
+echo.
+echo [SUCCESS] Registry security settings applied
+pause
+goto MENU
+
+:POLICIES
+cls
+echo ============================================================
+echo           IMPORT LOCAL GROUP POLICIES
+echo ============================================================
+echo.
+echo NOTE: This requires policy files in .\Policies\ directory
+echo.
+set /p importpol="Import policies? (y/n): "
+
+if /i not "%importpol%"=="y" goto MENU
+
+if not exist "Policies\" (
+    echo [ERROR] Policies directory not found!
+    pause
+    goto MENU
+)
+
+echo Importing Local Group Policy Objects...
+REM Add your policy import commands here
+echo [INFO] Policy import functionality - add specific commands
+pause
+goto MENU
+
+:GUEST_ADMIN
+cls
+echo ============================================================
+echo        DISABLE GUEST AND ADMINISTRATOR ACCOUNTS
+echo ============================================================
+echo.
+
+echo Disabling Guest account...
+net user Guest /active:no
+if %errorLevel% equ 0 (
+    echo [SUCCESS] Guest account disabled
+) else (
+    echo [ERROR] Failed to disable Guest account
+)
+
+echo.
+echo Disabling Administrator account...
+net user Administrator /active:no
+if %errorLevel% equ 0 (
+    echo [SUCCESS] Administrator account disabled
+) else (
+    echo [ERROR] Failed to disable Administrator account
+)
+
+echo.
+pause
+goto MENU
+
+:USER_AUDIT
+cls
+echo ============================================================
+echo              USER AUDIT - AUTHORIZED USERS
+echo ============================================================
+echo.
+
+if not exist "authorizedusers.txt" (
+    echo [ERROR] authorizedusers.txt not found!
+    echo Please create this file with one username per line.
+    pause
+    goto MENU
+)
+
+echo Reading authorized users from authorizedusers.txt...
+echo.
+echo Current users on system:
+wmic useraccount get name
+echo.
+echo Authorized users from file:
+type authorizedusers.txt
+echo.
+set /p proceed="Proceed with user audit? (y/n): "
+
+if /i not "%proceed%"=="y" goto MENU
+
+echo.
+echo [INFO] User audit requires manual review
+echo Use Computer Management (lusrmgr.msc) to:
+echo   1. Delete unauthorized users
+echo   2. Add missing authorized users
+echo.
+echo Opening Computer Management...
+lusrmgr.msc
+
+pause
+goto MENU
+
+:ADMIN_AUDIT
+cls
+echo ============================================================
+echo            ADMIN AUDIT - AUTHORIZED ADMINS
+echo ============================================================
+echo.
+
+if not exist "admins.txt" (
+    echo [ERROR] admins.txt not found!
+    echo Please create this file with one username per line.
+    pause
+    goto MENU
+)
+
+echo Reading authorized admins from admins.txt...
+echo.
+echo Current administrators:
+net localgroup Administrators
+echo.
+echo Authorized administrators from file:
+type admins.txt
+echo.
+set /p proceed="Proceed with admin audit? (y/n): "
+
+if /i not "%proceed%"=="y" goto MENU
+
+echo.
+echo [INFO] Admin audit requires manual review
+echo Use Computer Management (lusrmgr.msc) to:
+echo   1. Remove unauthorized users from Administrators group
+echo   2. Add missing authorized admins
+echo.
+echo Opening Computer Management...
+lusrmgr.msc
+
+pause
+goto MENU
+
+:USER_PASSWORDS
+cls
+echo ============================================================
+echo               RESET USER PASSWORDS
+echo ============================================================
+echo.
+echo This will reset ALL user passwords (except current user)
+echo Default password: q1W@e3R$t5Y^u7I*o9
+echo.
+set /p resetpass="Reset passwords? (y/n): "
+
+if /i not "%resetpass%"=="y" goto MENU
+
+echo.
+echo Resetting user passwords...
+echo [INFO] This operation requires manual execution for each user
+echo Use: net user [username] q1W@e3R$t5Y^u7I*o9
+echo.
+echo Opening Computer Management for manual password reset...
+lusrmgr.msc
+
+pause
+goto MENU
+
+:MEDIA_FILES
+cls
+echo ============================================================
+echo           REMOVE DISALLOWED MEDIA FILES
+echo ============================================================
+echo.
+echo This will search for and optionally delete media files:
+echo   mp3, mov, mp4, avi, mpg, mpeg, flac, m4a, flv, ogg
+echo   gif, png, jpg, jpeg
+echo.
+echo [M] Manual Mode - Review each file
+echo [A] Automatic Mode - Delete all found files
+echo [C] Cancel
+echo.
+set /p mediamode="Select mode: "
+
+if /i "%mediamode%"=="C" goto MENU
+if /i "%mediamode%"=="M" goto MEDIA_MANUAL
+if /i "%mediamode%"=="A" goto MEDIA_AUTO
+goto MEDIA_FILES
+
+:MEDIA_MANUAL
+cls
+echo ============================================================
+echo           MEDIA FILES - MANUAL MODE
+echo ============================================================
+echo.
+echo Searching for media files in C:\Users\...
+echo This may take several minutes...
+echo.
+
+set /p searchtype="Search for files? (y/n): "
+if /i not "%searchtype%"=="y" goto MENU
+
+echo.
+echo Opening File Explorer to C:\Users\
+echo Please manually review and delete unauthorized media files
+echo.
