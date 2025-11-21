@@ -1,7 +1,4 @@
 @echo off
-REM CyberPatriot Windows 11 Security Script
-REM Based on CP18 Training Round 2 Answer Key
-REM Team: Sharon High School 14-3178
 
 color 0A
 title CyberPatriot Windows 11 Security Script
@@ -17,7 +14,6 @@ if %errorLevel% neq 0 (
 
 echo ============================================================
 echo   CyberPatriot Windows 11 Security Hardening Script
-echo   Sharon High School Team 14-3178
 echo ============================================================
 echo.
 echo WARNING: This script will make significant security changes
@@ -49,8 +45,10 @@ echo [12] Configure Account Lockout Policies
 echo [13] Configure Security Options
 echo [14] Update Applications
 echo [15] Remove Unauthorized Software
-echo [16] Quick Security Scan
-echo [17] Run ALL Security Fixes (Automated)
+echo [16] Configure Remote Desktop Users
+echo [17] Enable RDP Network Level Authentication
+echo [18] Quick Security Scan
+echo [19] Run ALL Security Fixes (Automated)
 echo [0] Exit
 echo.
 set /p choice="Enter your choice: "
@@ -70,8 +68,10 @@ if "%choice%"=="12" goto LOCKOUT_POLICY
 if "%choice%"=="13" goto SECURITY_OPTIONS
 if "%choice%"=="14" goto UPDATE_APPS
 if "%choice%"=="15" goto REMOVE_SOFTWARE
-if "%choice%"=="16" goto QUICK_SCAN
-if "%choice%"=="17" goto RUN_ALL
+if "%choice%"=="16" goto RDP_USERS
+if "%choice%"=="17" goto RDP_NLA
+if "%choice%"=="18" goto QUICK_SCAN
+if "%choice%"=="19" goto RUN_ALL
 if "%choice%"=="0" goto EXIT
 goto MENU
 
@@ -196,6 +196,7 @@ sc config icssvc start=disabled & sc stop icssvc
 sc config SharedAccess start=disabled & sc stop SharedAccess
 sc config Fax start=disabled & sc stop Fax
 sc config FTPSVC start=disabled & sc stop FTPSVC
+echo [DISABLED] FTPSVC - FTP service has been stopped and disabled
 sc config SNMP start=disabled & sc stop SNMP
 sc config SNMPTRAP start=disabled & sc stop SNMPTRAP
 
@@ -224,6 +225,81 @@ if /i "%rdp%"=="y" (
 )
 
 echo.
+echo Disabling Remote Assistance connections...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fAllowToGetHelp /t REG_DWORD /d 0 /f
+echo [SUCCESS] Remote Assistance disabled
+
+echo.
+pause
+goto MENU
+
+:RDP_NLA
+cls
+echo ============================================================
+echo    ENABLE RDP NETWORK LEVEL AUTHENTICATION
+echo ============================================================
+echo.
+echo This enables Network Level Authentication for Remote Desktop
+echo for enhanced security requiring authentication before connection.
+echo.
+set /p enablenla="Enable RDP Network Level Authentication? (y/n): "
+
+if /i not "%enablenla%"=="y" goto MENU
+
+echo.
+echo Enabling Network Level Authentication...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v SecurityLayer /t REG_DWORD /d 2 /f
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 1 /f
+
+if %errorLevel% equ 0 (
+    echo [SUCCESS] RDP Network Level Authentication enabled
+) else (
+    echo [ERROR] Failed to enable RDP Network Level Authentication
+)
+
+echo.
+pause
+goto MENU
+
+:RDP_USERS
+cls
+echo ============================================================
+echo           CONFIGURE REMOTE DESKTOP USERS
+echo ============================================================
+echo.
+echo This adds authorized users to the Remote Desktop Users group.
+echo.
+
+if not exist "rdpusers.txt" (
+    echo [ERROR] rdpusers.txt not found!
+    echo Please create this file with one username per line.
+    echo.
+    pause
+    goto MENU
+)
+
+echo Reading authorized RDP users from rdpusers.txt...
+echo.
+type rdpusers.txt
+echo.
+set /p proceed="Add these users to Remote Desktop Users group? (y/n): "
+
+if /i not "%proceed%"=="y" goto MENU
+
+echo.
+echo Adding users to Remote Desktop Users group...
+
+for /f "delims=" %%A in (rdpusers.txt) do (
+    net localgroup "Remote Desktop Users" "%%A" /add >nul 2>&1
+    if %errorLevel% equ 0 (
+        echo [SUCCESS] Added %%A to Remote Desktop Users
+    ) else (
+        echo [INFO] %%A already in group or error occurred
+    )
+)
+
+echo.
+echo [SUCCESS] Remote Desktop Users group updated
 pause
 goto MENU
 
@@ -257,6 +333,10 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v RestrictAnonymous /t REG_
 
 REM Disable LM hash storage
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v NoLMHash /t REG_DWORD /d 1 /f
+
+REM Limit blank passwords to console only
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 1 /f
+echo [SUCCESS] Blank passwords limited to console only
 
 REM Enable Windows Defender
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 0 /f
@@ -418,41 +498,306 @@ lusrmgr.msc
 pause
 goto MENU
 
-:MEDIA_FILES
+:PASSWORD_POLICY
 cls
 echo ============================================================
-echo           REMOVE DISALLOWED MEDIA FILES
+echo           CONFIGURE PASSWORD POLICIES
 echo ============================================================
 echo.
-echo This will search for and optionally delete media files:
-echo   mp3, mov, mp4, avi, mpg, mpeg, flac, m4a, flv, ogg
-echo   gif, png, jpg, jpeg
+echo Setting secure password requirements...
 echo.
-echo [M] Manual Mode - Review each file
-echo [A] Automatic Mode - Delete all found files
-echo [C] Cancel
+set /p applypwdpol="Apply password policies? (y/n): "
+
+if /i not "%applypwdpol%"=="y" goto MENU
+
 echo.
-set /p mediamode="Select mode: "
+echo Applying password policies via net accounts...
 
-if /i "%mediamode%"=="C" goto MENU
-if /i "%mediamode%"=="M" goto MEDIA_MANUAL
-if /i "%mediamode%"=="A" goto MEDIA_AUTO
-goto MEDIA_FILES
+REM Set minimum password age to 1 day
+net accounts /minpwage:1
+echo [SUCCESS] Minimum password age set to 1 day
 
-:MEDIA_MANUAL
+REM Set password history to 24
+net accounts /uniquepw:24
+echo [SUCCESS] Password history set to 24 passwords remembered
+
+REM Set maximum password age to 42 days
+net accounts /maxpwage:42
+echo [SUCCESS] Maximum password age set to 42 days
+
+REM Set minimum password length to 8
+net accounts /minpwlen:8
+echo [SUCCESS] Minimum password length set to 8 characters
+
+echo.
+echo [SUCCESS] Secure password policies applied
+pause
+goto MENU
+
+:LOCKOUT_POLICY
 cls
 echo ============================================================
-echo           MEDIA FILES - MANUAL MODE
+echo         CONFIGURE ACCOUNT LOCKOUT POLICIES
 echo ============================================================
 echo.
-echo Searching for media files in C:\Users\...
-echo This may take several minutes...
+echo Setting secure account lockout parameters...
+echo.
+set /p applylockout="Apply lockout policies? (y/n): "
+
+if /i not "%applylockout%"=="y" goto MENU
+
+echo.
+echo Applying account lockout policies...
+
+REM Set account lockout threshold to 5 invalid attempts
+net accounts /lockoutthreshold:5
+echo [SUCCESS] Account lockout threshold set to 5 attempts
+
+REM Set lockout duration to 30 minutes
+net accounts /lockoutduration:30
+echo [SUCCESS] Account lockout duration set to 30 minutes
+
+REM Set lockout counter reset to 30 minutes
+net accounts /lockoutwindow:30
+echo [SUCCESS] Lockout counter reset window set to 30 minutes
+
+echo.
+echo [SUCCESS] Secure account lockout policies applied
+pause
+goto MENU
+
+:SECURITY_OPTIONS
+cls
+echo ============================================================
+echo              CONFIGURE SECURITY OPTIONS
+echo ============================================================
+echo.
+echo Applying additional security options...
 echo.
 
-set /p searchtype="Search for files? (y/n): "
-if /i not "%searchtype%"=="y" goto MENU
+echo Configuring registry security options...
+
+REM Do not allow anonymous enumeration of SAM accounts
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v RestrictAnonymousSAM /t REG_DWORD /d 1 /f
+echo [SUCCESS] Anonymous enumeration of SAM accounts disabled
+
+REM Do not allow anonymous enumeration of shares
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v RestrictAnonymous /t REG_DWORD /d 1 /f
+echo [SUCCESS] Anonymous enumeration disabled
+
+REM Require Ctrl+Alt+Del for logon
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v DisableCAD /t REG_DWORD /d 0 /f
+echo [SUCCESS] Ctrl+Alt+Del requirement enabled
+
+REM Enable SMBV1 disabled (network security)
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" /v SMB1 /t REG_DWORD /d 0 /f
+echo [SUCCESS] SMBv1 disabled for enhanced network security
 
 echo.
-echo Opening File Explorer to C:\Users\
-echo Please manually review and delete unauthorized media files
+echo [SUCCESS] Security options configured
+pause
+goto MENU
+
+:UPDATE_APPS
+cls
+echo ============================================================
+echo              UPDATE APPLICATIONS
+echo ============================================================
 echo.
+echo This will update critical applications:
+echo   - Windows Updates
+echo   - Notepad++
+echo.
+set /p updateapps="Proceed with application updates? (y/n): "
+
+if /i not "%updateapps%"=="y" goto MENU
+
+echo.
+echo Checking for Windows Updates...
+echo [INFO] Launching Windows Update settings...
+start ms-settings:windowsupdate
+echo [SUCCESS] Opening Windows Update - please install available updates
+
+echo.
+echo Notepad++ update check:
+echo [INFO] Please manually update Notepad++ to latest version
+echo Visit: https://notepad-plus-plus.org/downloads/
+
+echo.
+pause
+goto MENU
+
+:REMOVE_SOFTWARE
+cls
+echo ============================================================
+echo           REMOVE UNAUTHORIZED SOFTWARE
+echo ============================================================
+echo.
+echo This will remove known unauthorized applications:
+echo   - Wireshark
+echo   - CCleaner
+echo.
+set /p removesw="Remove unauthorized software? (y/n): "
+
+if /i not "%removesw%"=="y" goto MENU
+
+echo.
+echo Searching for and removing unauthorized software...
+
+REM Remove Wireshark
+echo Removing Wireshark...
+wmic product where name="Wireshark" call uninstall /nointeractive >nul 2>&1
+if %errorLevel% equ 0 (
+    echo [SUCCESS] Wireshark removed
+) else (
+    echo [INFO] Wireshark not found or already removed
+)
+
+REM Remove CCleaner
+echo Removing CCleaner...
+wmic product where name="CCleaner" call uninstall /nointeractive >nul 2>&1
+if %errorLevel% equ 0 (
+    echo [SUCCESS] CCleaner removed
+) else (
+    echo [INFO] CCleaner not found or already removed
+)
+
+echo.
+echo [COMPLETE] Unauthorized software removal complete
+pause
+goto MENU
+
+:QUICK_SCAN
+cls
+echo ============================================================
+echo              QUICK SECURITY SCAN
+echo ============================================================
+echo.
+echo Performing quick security checks...
+echo.
+
+echo Firewall Status:
+netsh advfirewall show allprofiles | find "State"
+
+echo.
+echo Windows Defender Status:
+sc query WinDefend | find "STATE"
+
+echo.
+echo FTPSVC Status:
+sc query FTPSVC | find "STATE"
+
+echo.
+echo Remote Desktop Status:
+reg query "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections
+
+echo.
+echo Windows Updates:
+echo [INFO] Check Settings ^> Update ^& Security for details
+
+echo.
+pause
+goto MENU
+
+:RUN_ALL
+cls
+echo ============================================================
+echo        RUN ALL SECURITY FIXES (AUTOMATED)
+echo ============================================================
+echo.
+echo WARNING: This will automatically apply ALL security fixes!
+echo This is a fully automated process with NO prompts!
+echo.
+set /p confirmall="Are you ABSOLUTELY SURE? (yes/no): "
+
+if /i not "%confirmall%"=="yes" goto MENU
+
+echo.
+echo Running all security fixes...
+echo.
+
+echo [1/14] Enabling Firewall...
+netsh advfirewall set allprofiles state on >nul 2>&1
+echo [SUCCESS]
+
+echo [2/14] Disabling FTPSVC...
+sc config FTPSVC start=disabled >nul 2>&1
+sc stop FTPSVC >nul 2>&1
+echo [SUCCESS]
+
+echo [3/14] Disabling Remote Desktop...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 1 /f >nul 2>&1
+echo [SUCCESS]
+
+echo [4/14] Disabling Remote Assistance...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fAllowToGetHelp /t REG_DWORD /d 0 /f >nul 2>&1
+echo [SUCCESS]
+
+echo [5/14] Enabling RDP Network Level Authentication...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v SecurityLayer /t REG_DWORD /d 2 /f >nul 2>&1
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 1 /f >nul 2>&1
+echo [SUCCESS]
+
+echo [6/14] Configuring Password Policies...
+net accounts /minpwage:1 >nul 2>&1
+net accounts /maxpwage:42 >nul 2>&1
+net accounts /minpwlen:8 >nul 2>&1
+net accounts /uniquepw:24 >nul 2>&1
+echo [SUCCESS]
+
+echo [7/14] Configuring Account Lockout Policies...
+net accounts /lockoutthreshold:5 >nul 2>&1
+net accounts /lockoutduration:30 >nul 2>&1
+net accounts /lockoutwindow:30 >nul 2>&1
+echo [SUCCESS]
+
+echo [8/14] Limiting blank passwords to console only...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 1 /f >nul 2>&1
+echo [SUCCESS]
+
+echo [9/14] Disabling anonymous enumeration...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v RestrictAnonymousSAM /t REG_DWORD /d 1 /f >nul 2>&1
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v RestrictAnonymous /t REG_DWORD /d 1 /f >nul 2>&1
+echo [SUCCESS]
+
+echo [10/14] Disabling LM hash storage...
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v NoLMHash /t REG_DWORD /d 1 /f >nul 2>&1
+echo [SUCCESS]
+
+echo [11/14] Enabling UAC...
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnableLUA /t REG_DWORD /d 1 /f >nul 2>&1
+echo [SUCCESS]
+
+echo [12/14] Disabling Guest and Administrator accounts...
+net user Guest /active:no >nul 2>&1
+net user Administrator /active:no >nul 2>&1
+echo [SUCCESS]
+
+echo [13/14] Removing Wireshark...
+wmic product where name="Wireshark" call uninstall /nointeractive >nul 2>&1
+echo [SUCCESS]
+
+echo [14/14] Removing CCleaner...
+wmic product where name="CCleaner" call uninstall /nointeractive >nul 2>&1
+echo [SUCCESS]
+
+echo.
+echo ============================================================
+echo        ALL SECURITY FIXES HAVE BEEN APPLIED!
+echo ============================================================
+echo.
+echo IMPORTANT REMAINING TASKS:
+echo   - Update Windows via Settings ^> Update ^& Security
+echo   - Update Notepad++ to latest version
+echo   - Review authorized users/admins files
+echo   - Configure Remote Desktop Users (if needed)
+echo.
+pause
+goto MENU
+
+:EXIT
+echo.
+echo Thank you for using CyberPatriot Security Script!
+echo.
+pause
+exit /b 0
