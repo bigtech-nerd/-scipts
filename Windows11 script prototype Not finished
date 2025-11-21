@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 
 color 0A
 title CyberPatriot Windows 11 Security Script - CIS Benchmark Compliant
@@ -31,34 +32,35 @@ echo ============================================================
 echo                    MAIN MENU
 echo ============================================================
 echo.
-echo --- AUDITING & REPORTS ---
+echo --- AUDITING and REPORTS ---
 echo [A1] CIS Benchmark Audit Report
-echo [A2] Account Audit (Users & Groups)
+echo [A2] Account Audit - Users and Groups
 echo [A3] Security Policy Audit
 echo [A4] Service Status Audit
 echo [A5] Firewall Rules Audit
 echo.
 echo --- ACCOUNT POLICIES ---
-echo [1] Configure Account Lockout Policies (CIS 1.2)
-echo [2] Configure Password Policies (CIS 1.1)
+echo [1] Configure Account Lockout Policies ^(CIS 1.2^)
+echo [2] Configure Password Policies ^(CIS 1.1^)
 echo [3] Audit Account Settings
+echo [3B] Manage Administrator Accounts
 echo.
 echo --- SECURITY OPTIONS ---
-echo [4] Configure Rename Admin & Guest Accounts
+echo [4] Configure Rename Admin or Guest Accounts
 echo [5] Disable Unused Accounts
 echo [6] Configure Blank Password Restrictions
 echo [7] Security Options Audit
 echo.
 echo --- ADVANCED AUDIT ---
-echo [8] Enable Advanced Audit Policy (CIS 2.3.2)
+echo [8] Enable Advanced Audit Policy ^(CIS 2.3.2^)
 echo [9] Configure Account Logon Auditing
 echo [10] Configure Account Management Auditing
 echo [11] View Audit Policy Status
 echo.
-echo --- SERVICES & FIREWALL ---
+echo --- SERVICES and FIREWALL ---
 echo [12] Disable Unnecessary Services
 echo [13] Configure Firewall
-echo [14] Configure Remote Desktop (CIS 17.3)
+echo [14] Configure Remote Desktop ^(CIS 17.3^)
 echo.
 echo --- SYSTEM HARDENING ---
 echo [15] Apply Registry Security Settings
@@ -68,7 +70,7 @@ echo [18] Remove Disallowed Media Files
 echo [19] Configure Remote Desktop Users Group
 echo.
 echo --- AUTOMATED ---
-echo [20] Run ALL CIS Level 1 Fixes (Automated)
+echo [20] Run ALL CIS Level 1 Fixes ^(Automated^)
 echo [21] Export System Audit Report
 echo.
 echo [0] Exit
@@ -83,10 +85,11 @@ if "%choice%"=="A5" goto FIREWALL_AUDIT
 if "%choice%"=="1" goto LOCKOUT_POLICY
 if "%choice%"=="2" goto PASSWORD_POLICY
 if "%choice%"=="3" goto AUDIT_ACCOUNTS
+if "%choice%"=="3B" goto MANAGE_ADMINS
 if "%choice%"=="4" goto RENAME_ACCOUNTS
 if "%choice%"=="5" goto DISABLE_ACCOUNTS
 if "%choice%"=="6" goto BLANK_PASSWORD
-if "%choice%"=="7" goto SECURITY_OPTIONS
+if "%choice%"=="7" goto SECURITY_OPTIONS_AUDIT
 if "%choice%"=="8" goto ADVANCED_AUDIT
 if "%choice%"=="9" goto ACCOUNT_LOGON_AUDIT
 if "%choice%"=="10" goto ACCOUNT_MGMT_AUDIT
@@ -102,6 +105,9 @@ if "%choice%"=="19" goto RDP_USERS
 if "%choice%"=="20" goto RUN_ALL_CIS
 if "%choice%"=="21" goto EXPORT_AUDIT
 if "%choice%"=="0" goto EXIT
+cls
+echo Invalid choice. Please try again.
+pause
 goto MENU
 
 :CIS_AUDIT_REPORT
@@ -116,12 +122,12 @@ echo.
 echo [1] ACCOUNT POLICIES:
 echo ------
 echo Account Lockout Threshold:
-net accounts | find "Lockout threshold"
+net accounts 2>nul | find "Lockout threshold"
 echo.
 echo Password Policy:
-net accounts | find "Minimum password age"
-net accounts | find "Maximum password age"
-net accounts | find "Minimum password length"
+net accounts 2>nul | find "Minimum password age"
+net accounts 2>nul | find "Maximum password age"
+net accounts 2>nul | find "Minimum password length"
 echo.
 
 echo [2] SECURITY OPTIONS:
@@ -133,29 +139,29 @@ echo Administrator Status:
 net user Administrator 2>nul | find "Account active"
 echo.
 
-echo [3] FIREWALL:
+echo [3] FIREWALL STATUS:
 echo ------
-netsh advfirewall show allprofiles | find "State"
+netsh advfirewall show allprofiles 2>nul | find "State"
 echo.
 
 echo [4] WINDOWS DEFENDER:
 echo ------
-sc query WinDefend | find "STATE"
+sc query WinDefend 2>nul | find "STATE"
 echo.
 
-echo [5] AUDIT POLICY:
-echo ------
-auditpol /get /category:* 2>nul | find "Success\|Failure" | head -10
-echo.
-
-echo [6] REMOTE DESKTOP:
+echo [5] REMOTE DESKTOP:
 echo ------
 reg query "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections 2>nul
 echo.
 
-echo [7] SMB SECURITY:
+echo [6] SMB SECURITY:
 echo ------
 reg query "HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" /v SMB1 2>nul
+echo.
+
+echo [7] AUDIT POLICY:
+echo ------
+auditpol /get /category:* 2>nul
 echo.
 
 pause
@@ -169,18 +175,13 @@ echo ============================================================
 echo.
 
 echo Local User Accounts:
-echo -------------------
-net user
+echo --------------------
+net user 2>nul
 echo.
 
 echo Local Administrators:
 echo --------------------
-net localgroup Administrators
-echo.
-
-echo Disabled Accounts Check:
-echo ------------------------
-wmic useraccount where Disabled=FALSE get Name,Disabled
+net localgroup Administrators 2>nul
 echo.
 
 echo.
@@ -190,35 +191,35 @@ goto MENU
 :SECURITY_POLICY_AUDIT
 cls
 echo ============================================================
-echo          SECURITY POLICY AUDIT (CIS Level 1)
+echo          SECURITY POLICY AUDIT
 echo ============================================================
 echo.
 
-echo Checking CIS 1.2.1 - Account Lockout Threshold (should be 5 or fewer):
-net accounts | find "Lockout threshold"
+echo CIS 1.2.1 - Account Lockout Threshold ^(should be 5 or fewer^):
+net accounts 2>nul | find "Lockout threshold"
 echo.
 
-echo Checking CIS 1.1.1 - Password History (should be 24 or higher):
-net accounts | find "Password history"
+echo CIS 1.1.1 - Password History ^(should be 24 or higher^):
+net accounts 2>nul | find "Password history"
 echo.
 
-echo Checking CIS 1.1.2 - Maximum Password Age (should be 42 or fewer):
-net accounts | find "Maximum password age"
+echo CIS 1.1.2 - Maximum Password Age ^(should be 42 or fewer^):
+net accounts 2>nul | find "Maximum password age"
 echo.
 
-echo Checking CIS 1.1.3 - Minimum Password Age (should be 1 or higher):
-net accounts | find "Minimum password age"
+echo CIS 1.1.3 - Minimum Password Age ^(should be 1 or higher^):
+net accounts 2>nul | find "Minimum password age"
 echo.
 
-echo Checking CIS 1.1.4 - Minimum Password Length (should be 14 or higher):
-net accounts | find "Minimum password length"
+echo CIS 1.1.4 - Minimum Password Length ^(should be 14 or higher^):
+net accounts 2>nul | find "Minimum password length"
 echo.
 
-echo Checking CIS 2.3.1.1 - Guest Account (should be Disabled):
+echo CIS 2.3.1.1 - Guest Account ^(should be Disabled^):
 net user Guest 2>nul | find "Account active"
 echo.
 
-echo Checking CIS 2.3.1.2 - Administrator Account (should be Disabled):
+echo CIS 2.3.1.2 - Administrator Account ^(should be Disabled^):
 net user Administrator 2>nul | find "Account active"
 echo.
 
@@ -232,27 +233,24 @@ echo              SERVICE STATUS AUDIT
 echo ============================================================
 echo.
 
-echo Checking CIS recommendations for services...
+echo FTP Service Status:
+sc query FTPSVC 2>nul | find "STATE"
+if errorlevel 1 echo Service not found
 echo.
 
-echo FTP Service Status (should be disabled):
-sc query FTPSVC | find "STATE"
+echo Remote Registry Status:
+sc query RemoteRegistry 2>nul | find "STATE"
+if errorlevel 1 echo Service not found
 echo.
 
-echo Remote Registry (should be disabled):
-sc query RemoteRegistry | find "STATE"
+echo Remote Access Status:
+sc query RemoteAccess 2>nul | find "STATE"
+if errorlevel 1 echo Service not found
 echo.
 
-echo Remote Access (should be disabled):
-sc query RemoteAccess | find "STATE"
-echo.
-
-echo Telnet (should be disabled):
-sc query TlntSvr | find "STATE"
-echo.
-
-echo SMB v1 (should be disabled):
-sc query lanmanworkstation | find "STATE"
+echo Telnet Status:
+sc query TlntSvr 2>nul | find "STATE"
+if errorlevel 1 echo Service not found
 echo.
 
 pause
@@ -265,16 +263,8 @@ echo            FIREWALL RULES AUDIT
 echo ============================================================
 echo.
 
-echo Windows Defender Firewall Status (All Profiles):
-netsh advfirewall show allprofiles
-echo.
-
-echo Inbound Rules Count:
-netsh advfirewall firewall show rule dir=in | find /c "Rule"
-echo.
-
-echo Outbound Rules Count:
-netsh advfirewall firewall show rule dir=out | find /c "Rule"
+echo Windows Defender Firewall Status ^(All Profiles^):
+netsh advfirewall show allprofiles 2>nul
 echo.
 
 pause
@@ -283,31 +273,31 @@ goto MENU
 :LOCKOUT_POLICY
 cls
 echo ============================================================
-echo      CONFIGURE ACCOUNT LOCKOUT POLICIES (CIS 1.2)
+echo      CONFIGURE ACCOUNT LOCKOUT POLICIES
 echo ============================================================
 echo.
 echo CIS Recommendations:
-echo  - Lockout Threshold: 5 (invalid login attempts)
+echo  - Lockout Threshold: 5 ^(invalid login attempts^)
 echo  - Lockout Duration: 30 minutes
 echo  - Reset Counter: 30 minutes
 echo.
-set /p applylockout="Apply account lockout policies? (y/n): "
+set /p applylockout="Apply account lockout policies? ^(y/n^): "
 
 if /i not "%applylockout%"=="y" goto MENU
 
 echo.
 echo Applying account lockout policies...
 
-net accounts /lockoutthreshold:5
-if %errorLevel% equ 0 echo [SUCCESS] Lockout threshold set to 5
-net accounts /lockoutduration:30
-if %errorLevel% equ 0 echo [SUCCESS] Lockout duration set to 30 minutes
-net accounts /lockoutwindow:30
-if %errorLevel% equ 0 echo [SUCCESS] Lockout counter reset window set to 30 minutes
+net accounts /lockoutthreshold:5 2>nul
+if !errorlevel! equ 0 echo [SUCCESS] Lockout threshold set to 5
+net accounts /lockoutduration:30 2>nul
+if !errorlevel! equ 0 echo [SUCCESS] Lockout duration set to 30 minutes
+net accounts /lockoutwindow:30 2>nul
+if !errorlevel! equ 0 echo [SUCCESS] Lockout counter reset window set to 30 minutes
 
 echo.
 echo Verifying settings:
-net accounts | find "Lockout"
+net accounts 2>nul | find "Lockout"
 echo.
 
 pause
@@ -316,7 +306,7 @@ goto MENU
 :PASSWORD_POLICY
 cls
 echo ============================================================
-echo        CONFIGURE PASSWORD POLICIES (CIS 1.1)
+echo        CONFIGURE PASSWORD POLICIES
 echo ============================================================
 echo.
 echo CIS Recommendations:
@@ -325,25 +315,25 @@ echo  - Maximum Password Age: 42 days
 echo  - Minimum Password Age: 1 day
 echo  - Minimum Password Length: 14 characters
 echo.
-set /p applypwdpol="Apply password policies? (y/n): "
+set /p applypwdpol="Apply password policies? ^(y/n^): "
 
 if /i not "%applypwdpol%"=="y" goto MENU
 
 echo.
 echo Applying password policies...
 
-net accounts /uniquepw:24
-if %errorLevel% equ 0 echo [SUCCESS] Password history set to 24
-net accounts /maxpwage:42
-if %errorLevel% equ 0 echo [SUCCESS] Maximum password age set to 42 days
-net accounts /minpwage:1
-if %errorLevel% equ 0 echo [SUCCESS] Minimum password age set to 1 day
-net accounts /minpwlen:14
-if %errorLevel% equ 0 echo [SUCCESS] Minimum password length set to 14
+net accounts /uniquepw:24 2>nul
+if !errorlevel! equ 0 echo [SUCCESS] Password history set to 24
+net accounts /maxpwage:42 2>nul
+if !errorlevel! equ 0 echo [SUCCESS] Maximum password age set to 42 days
+net accounts /minpwage:1 2>nul
+if !errorlevel! equ 0 echo [SUCCESS] Minimum password age set to 1 day
+net accounts /minpwlen:14 2>nul
+if !errorlevel! equ 0 echo [SUCCESS] Minimum password length set to 14
 
 echo.
 echo Verifying settings:
-net accounts
+net accounts 2>nul
 echo.
 
 pause
@@ -357,37 +347,79 @@ echo ============================================================
 echo.
 
 echo System Account Policies:
-net accounts
+net accounts 2>nul
 echo.
 
+pause
+goto MENU
+
+:MANAGE_ADMINS
+cls
+echo ============================================================
+echo         MANAGE ADMINISTRATOR ACCOUNTS
+echo ============================================================
+echo.
+echo Current Administrators:
+net localgroup Administrators 2>nul
+echo.
+
+echo [1] Add user to Administrators group
+echo [2] Remove user from Administrators group
+echo [3] Return to menu
+echo.
+set /p adminaction="Select action: "
+
+if "%adminaction%"=="1" (
+    echo.
+    set /p addadmin="Enter username to add to Administrators: "
+    net localgroup Administrators "!addadmin!" /add 2>nul
+    if !errorlevel! equ 0 (
+        echo [SUCCESS] !addadmin! added to Administrators
+    ) else (
+        echo [ERROR] Failed to add !addadmin!
+    )
+)
+
+if "%adminaction%"=="2" (
+    echo.
+    set /p removeadmin="Enter username to remove from Administrators: "
+    net localgroup Administrators "!removeadmin!" /delete 2>nul
+    if !errorlevel! equ 0 (
+        echo [SUCCESS] !removeadmin! removed from Administrators
+    ) else (
+        echo [ERROR] Failed to remove !removeadmin!
+    )
+)
+
+echo.
 pause
 goto MENU
 
 :RENAME_ACCOUNTS
 cls
 echo ============================================================
-echo      RENAME ADMINISTRATOR & GUEST ACCOUNTS (CIS 2.3.1)
+echo      RENAME ADMINISTRATOR OR GUEST ACCOUNTS
 echo ============================================================
 echo.
 echo WARNING: Renaming built-in accounts requires careful planning
 echo Make sure you have documented the new names!
 echo.
-set /p renameadmin="Rename Administrator account? (y/n): "
+set /p renameadmin="Rename Administrator account? ^(y/n^): "
 
 if /i "%renameadmin%"=="y" (
     set /p newadminname="Enter new Administrator name: "
-    net user Administrator /active:no
-    net user Administrator /setname:"!newadminname!"
+    net user Administrator /active:no 2>nul
+    net user Administrator /setname:"!newadminname!" 2>nul
     echo [SUCCESS] Administrator renamed
 )
 
 echo.
-set /p renameguest="Rename Guest account? (y/n): "
+set /p renameguest="Rename Guest account? ^(y/n^): "
 
 if /i "%renameguest%"=="y" (
     set /p newguestname="Enter new Guest name: "
-    net user Guest /active:no
-    net user Guest /setname:"!newguestname!"
+    net user Guest /active:no 2>nul
+    net user Guest /setname:"!newguestname!" 2>nul
     echo [SUCCESS] Guest renamed
 )
 
@@ -398,102 +430,98 @@ goto MENU
 :DISABLE_ACCOUNTS
 cls
 echo ============================================================
-echo         DISABLE UNUSED ACCOUNTS (CIS 2.3.1.1)
+echo         DISABLE UNUSED ACCOUNTS
 echo ============================================================
 echo.
 echo Current user accounts:
-net user
+net user 2>nul
 echo.
 
-set /p disableguest="Disable Guest account? (y/n): "
+set /p disableguest="Disable Guest account? ^(y/n^): "
 if /i "%disableguest%"=="y" (
-    net user Guest /active:no
+    net user Guest /active:no 2>nul
     echo [SUCCESS] Guest account disabled
 )
 
 echo.
-set /p disableadmin="Disable built-in Administrator? (y/n): "
+set /p disableadmin="Disable built-in Administrator? ^(y/n^): "
 if /i "%disableadmin%"=="y" (
-    net user Administrator /active:no
+    net user Administrator /active:no 2>nul
     echo [SUCCESS] Administrator account disabled
 )
 
 echo.
-pause
-goto MENU
+echo Would you like to delete other unauthorized user accounts?
+echo.
+set /p deleteusers="Delete unauthorized user accounts? ^(y/n^): "
+if /i not "%deleteusers%"=="y" goto MENU
+
+echo.
+:DELETE_USER_LOOP
+set /p deleteuser="Enter username to delete ^(or press Enter to skip^): "
+if "%deleteuser%"=="" goto MENU
+
+net user !deleteuser! /delete 2>nul
+if !errorlevel! equ 0 (
+    echo [SUCCESS] !deleteuser! deleted
+) else (
+    echo [ERROR] Failed to delete !deleteuser!
+)
+
+goto DELETE_USER_LOOP
 
 :BLANK_PASSWORD
 cls
 echo ============================================================
-echo    LIMIT BLANK PASSWORDS TO CONSOLE (CIS 2.3.1.2)
+echo    LIMIT BLANK PASSWORDS TO CONSOLE
 echo ============================================================
 echo.
 echo This ensures blank passwords can only be used at console logon,
 echo not over network connections.
 echo.
-set /p applyblank="Apply blank password restrictions? (y/n): "
+set /p applyblank="Apply blank password restrictions? ^(y/n^): "
 
 if /i not "%applyblank%"=="y" goto MENU
 
 echo.
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 1 /f
-if %errorLevel% equ 0 echo [SUCCESS] Blank password restriction enabled
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 1 /f >nul 2>&1
+if !errorlevel! equ 0 echo [SUCCESS] Blank password restriction enabled
 echo.
 
 pause
 goto MENU
 
-:SECURITY_OPTIONS
+:SECURITY_OPTIONS_AUDIT
 cls
 echo ============================================================
-echo           CONFIGURE SECURITY OPTIONS (CIS 2.3)
+echo           SECURITY OPTIONS AUDIT
 echo ============================================================
 echo.
-set /p applysec="Apply security options? (y/n): "
 
-if /i not "%applysec%"=="y" goto MENU
-
+echo AutoRun Status:
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v NoDriveTypeAutoRun 2>nul
 echo.
-echo Applying security registry settings...
 
-REM Disable AutoRun
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v NoDriveTypeAutoRun /t REG_DWORD /d 255 /f >nul 2>&1
-echo [SUCCESS] AutoRun disabled
-
-REM Require Ctrl+Alt+Del
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v DisableCAD /t REG_DWORD /d 0 /f >nul 2>&1
-echo [SUCCESS] Ctrl+Alt+Del requirement enabled
-
-REM Enable UAC
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnableLUA /t REG_DWORD /d 1 /f >nul 2>&1
-echo [SUCCESS] UAC enabled
-
-REM Disable anonymous SID enumeration
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v RestrictAnonymousSAM /t REG_DWORD /d 1 /f >nul 2>&1
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v RestrictAnonymous /t REG_DWORD /d 1 /f >nul 2>&1
-echo [SUCCESS] Anonymous enumeration disabled
-
-REM Disable LM hash storage
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v NoLMHash /t REG_DWORD /d 1 /f >nul 2>&1
-echo [SUCCESS] LM hash storage disabled
-
-REM Disable SMBv1
-reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" /v SMB1 /t REG_DWORD /d 0 /f >nul 2>&1
-echo [SUCCESS] SMBv1 disabled
-
+echo UAC Status:
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnableLUA 2>nul
 echo.
+
+echo Ctrl+Alt+Del Requirement:
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v DisableCAD 2>nul
+echo.
+
 pause
 goto MENU
 
 :ADVANCED_AUDIT
 cls
 echo ============================================================
-echo      ENABLE ADVANCED AUDIT POLICY (CIS 2.3.2.1)
+echo      ENABLE ADVANCED AUDIT POLICY
 echo ============================================================
 echo.
 echo This enables advanced audit logging for comprehensive monitoring.
 echo.
-set /p enableaudit="Enable advanced audit policy? (y/n): "
+set /p enableaudit="Enable advanced audit policy? ^(y/n^): "
 
 if /i not "%enableaudit%"=="y" goto MENU
 
@@ -501,7 +529,7 @@ echo.
 echo Enabling advanced audit policy...
 
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v SCENoApplyLegacyAuditPolicy /t REG_DWORD /d 1 /f >nul 2>&1
-if %errorLevel% equ 0 echo [SUCCESS] Force audit policy subcategory settings enabled
+if !errorlevel! equ 0 echo [SUCCESS] Force audit policy subcategory settings enabled
 
 echo.
 pause
@@ -510,36 +538,33 @@ goto MENU
 :ACCOUNT_LOGON_AUDIT
 cls
 echo ============================================================
-echo      CONFIGURE ACCOUNT LOGON AUDITING (CIS 17.1.1)
+echo      CONFIGURE ACCOUNT LOGON AUDITING
 echo ============================================================
 echo.
 echo Credential Validation auditing logs all logon attempts.
 echo.
-set /p auditattempts="Enable credential validation auditing? (y/n): "
+set /p auditattempts="Enable credential validation auditing? ^(y/n^): "
 
 if /i not "%auditattempts%"=="y" goto MENU
 
 echo.
 echo Enabling credential validation audit...
 auditpol /set /subcategory:"Credential Validation" /success:enable /failure:enable >nul 2>&1
-if %errorLevel% equ 0 echo [SUCCESS] Credential validation auditing enabled
+if !errorlevel! equ 0 echo [SUCCESS] Credential validation auditing enabled
 
 echo.
-auditpol /get /subcategory:"Credential Validation"
-echo.
-
 pause
 goto MENU
 
 :ACCOUNT_MGMT_AUDIT
 cls
 echo ============================================================
-echo      CONFIGURE ACCOUNT MANAGEMENT AUDITING (CIS 17.2)
+echo      CONFIGURE ACCOUNT MANAGEMENT AUDITING
 echo ============================================================
 echo.
 echo Logs user and group management changes.
 echo.
-set /p auditacctmgmt="Enable account management auditing? (y/n): "
+set /p auditacctmgmt="Enable account management auditing? ^(y/n^): "
 
 if /i not "%auditacctmgmt%"=="y" goto MENU
 
@@ -549,7 +574,7 @@ auditpol /set /subcategory:"User Account Management" /success:enable /failure:en
 auditpol /set /subcategory:"Security Group Management" /success:enable /failure:enable >nul 2>&1
 auditpol /set /subcategory:"Application Group Management" /success:enable /failure:enable >nul 2>&1
 
-if %errorLevel% equ 0 echo [SUCCESS] Account management auditing enabled
+if !errorlevel! equ 0 echo [SUCCESS] Account management auditing enabled
 
 echo.
 pause
@@ -562,39 +587,135 @@ echo         VIEW CURRENT AUDIT POLICY STATUS
 echo ============================================================
 echo.
 
-auditpol /get /category:*
-echo.
+auditpol /get /category:* 2>nul
 
+echo.
 pause
 goto MENU
 
 :DISABLE_SERVICES
 cls
 echo ============================================================
-echo         DISABLE UNNECESSARY SERVICES (CIS)
+echo         DISABLE UNNECESSARY SERVICES
 echo ============================================================
 echo.
-echo Services identified as security risks:
-echo  - FTP (FTPSVC)
-echo  - Remote Registry
-echo  - Remote Access
-echo  - Telnet
-echo  - UPnP
+echo [M] Manual Mode - Review each service
+echo [A] Automatic Mode - Disable all at once
+echo [C] Cancel
 echo.
-set /p disablesvcs="Disable these services? (y/n): "
+set /p servicemode="Select mode: "
 
-if /i not "%disablesvcs%"=="y" goto MENU
+if /i "%servicemode%"=="C" goto MENU
+if /i "%servicemode%"=="M" goto SERVICES_MANUAL_MODE
+if /i "%servicemode%"=="A" goto SERVICES_AUTO_MODE
+goto DISABLE_SERVICES
+
+:SERVICES_MANUAL_MODE
+cls
+echo ============================================================
+echo         SERVICES - MANUAL REVIEW MODE
+echo ============================================================
+echo.
+echo Review and optionally disable each service:
+echo.
+
+call :REVIEW_SERVICE "FTPSVC" "FTP Service"
+call :REVIEW_SERVICE "RemoteRegistry" "Remote Registry"
+call :REVIEW_SERVICE "RemoteAccess" "Remote Access"
+call :REVIEW_SERVICE "TlntSvr" "Telnet"
+call :REVIEW_SERVICE "SSDPSRV" "SSDP Discovery"
+call :REVIEW_SERVICE "upnphost" "UPnP Host Device"
+call :REVIEW_SERVICE "WMPNetworkSvc" "Windows Media Player Network"
+call :REVIEW_SERVICE "icssvc" "Internet Connection Sharing"
 
 echo.
-echo Disabling services...
+echo Service review complete!
+pause
+goto MENU
 
-for %%S in (FTPSVC RemoteRegistry RemoteAccess TlntSvr SSDPSRV upnphost) do (
-    sc config %%S start=disabled >nul 2>&1
-    sc stop %%S >nul 2>&1
-    echo [DISABLED] %%S
+:REVIEW_SERVICE
+set svcname=%~1
+set svcdesc=%~2
+
+sc query !svcname! >nul 2>&1
+if !errorlevel! neq 0 (
+    echo [NOT FOUND] !svcdesc! - service not installed
+    exit /b
 )
 
 echo.
+echo Service: !svcdesc! ^(!svcname!^)
+sc query !svcname! 2>nul | find "STATE"
+set /p action="Disable this service? ^(y/n^): "
+
+if /i "%action%"=="y" (
+    sc config !svcname! start=disabled >nul 2>&1
+    sc stop !svcname! >nul 2>&1
+    echo [SUCCESS] !svcdesc! disabled and stopped
+) else (
+    echo [SKIPPED] !svcdesc! not modified
+)
+
+exit /b
+
+:SERVICES_AUTO_MODE
+cls
+echo ============================================================
+echo       SERVICES - AUTOMATIC DISABLE MODE
+echo ============================================================
+echo.
+echo WARNING: This will disable multiple services automatically!
+echo.
+set /p confirm="Are you SURE? ^(yes/no^): "
+
+if /i not "%confirm%"=="yes" goto MENU
+
+echo.
+echo Disabling services...
+echo.
+
+echo Disabling FTPSVC ^(FTP Service^)...
+sc config FTPSVC start=disabled >nul 2>&1
+sc stop FTPSVC >nul 2>&1
+echo [SUCCESS] FTPSVC disabled
+
+echo Disabling RemoteRegistry...
+sc config RemoteRegistry start=disabled >nul 2>&1
+sc stop RemoteRegistry >nul 2>&1
+echo [SUCCESS] RemoteRegistry disabled
+
+echo Disabling RemoteAccess...
+sc config RemoteAccess start=disabled >nul 2>&1
+sc stop RemoteAccess >nul 2>&1
+echo [SUCCESS] RemoteAccess disabled
+
+echo Disabling TlntSvr ^(Telnet^)...
+sc config TlntSvr start=disabled >nul 2>&1
+sc stop TlntSvr >nul 2>&1
+echo [SUCCESS] TlntSvr disabled
+
+echo Disabling SSDPSRV ^(SSDP Discovery^)...
+sc config SSDPSRV start=disabled >nul 2>&1
+sc stop SSDPSRV >nul 2>&1
+echo [SUCCESS] SSDPSRV disabled
+
+echo Disabling upnphost ^(UPnP^)...
+sc config upnphost start=disabled >nul 2>&1
+sc stop upnphost >nul 2>&1
+echo [SUCCESS] upnphost disabled
+
+echo Disabling WMPNetworkSvc ^(Windows Media Player^)...
+sc config WMPNetworkSvc start=disabled >nul 2>&1
+sc stop WMPNetworkSvc >nul 2>&1
+echo [SUCCESS] WMPNetworkSvc disabled
+
+echo Disabling icssvc ^(Internet Connection Sharing^)...
+sc config icssvc start=disabled >nul 2>&1
+sc stop icssvc >nul 2>&1
+echo [SUCCESS] icssvc disabled
+
+echo.
+echo [COMPLETE] All services disabled
 pause
 goto MENU
 
@@ -607,12 +728,12 @@ echo.
 echo Enabling Windows Defender Firewall for all profiles...
 echo.
 
-netsh advfirewall set allprofiles state on
-if %errorLevel% equ 0 echo [SUCCESS] Firewall enabled for all profiles
+netsh advfirewall set allprofiles state on 2>nul
+if !errorlevel! equ 0 echo [SUCCESS] Firewall enabled for all profiles
 
 echo.
 echo Current Firewall Status:
-netsh advfirewall show allprofiles | find "State"
+netsh advfirewall show allprofiles 2>nul | find "State"
 echo.
 
 pause
@@ -621,12 +742,12 @@ goto MENU
 :REMOTE_DESKTOP
 cls
 echo ============================================================
-echo        CONFIGURE REMOTE DESKTOP (CIS 17.3)
+echo        CONFIGURE REMOTE DESKTOP
 echo ============================================================
 echo.
 echo WARNING: Remote Desktop may be CRITICAL for your environment!
 echo.
-set /p configrdp="Configure Remote Desktop security? (y/n): "
+set /p configrdp="Configure Remote Desktop security? ^(y/n^): "
 
 if /i not "%configrdp%"=="y" goto MENU
 
@@ -634,12 +755,12 @@ echo.
 echo Enabling RDP Network Level Authentication...
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v SecurityLayer /t REG_DWORD /d 2 /f >nul 2>&1
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 1 /f >nul 2>&1
-echo [SUCCESS] RDP Network Level Authentication enabled
+if !errorlevel! equ 0 echo [SUCCESS] RDP Network Level Authentication enabled
 
 echo.
 echo Disabling Remote Assistance...
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fAllowToGetHelp /t REG_DWORD /d 0 /f >nul 2>&1
-echo [SUCCESS] Remote Assistance disabled
+if !errorlevel! equ 0 echo [SUCCESS] Remote Assistance disabled
 
 echo.
 pause
@@ -651,7 +772,7 @@ echo ============================================================
 echo        APPLY REGISTRY SECURITY SETTINGS
 echo ============================================================
 echo.
-set /p applyreg="Apply all registry hardening? (y/n): "
+set /p applyreg="Apply all registry hardening? ^(y/n^): "
 
 if /i not "%applyreg%"=="y" goto MENU
 
@@ -687,7 +808,7 @@ echo ============================================================
 echo         REMOVE UNAUTHORIZED SOFTWARE
 echo ============================================================
 echo.
-set /p removesw="Remove Wireshark and CCleaner? (y/n): "
+set /p removesw="Remove Wireshark and CCleaner? ^(y/n^): "
 
 if /i not "%removesw%"=="y" goto MENU
 
@@ -716,10 +837,62 @@ echo.
 pause
 goto MENU
 
+:MEDIA_FILES
+cls
+echo ============================================================
+echo          REMOVE DISALLOWED MEDIA FILES
+echo ============================================================
+echo.
+echo This will search for media files:
+echo   Audio: mp3, flac, m4a, ogg, wav
+echo   Video: mp4, avi, mov, mkv, flv
+echo   Images: jpg, jpeg, png, gif, bmp
+echo.
+set /p searchmedia="Search and remove media files? ^(y/n^): "
+
+if /i not "%searchmedia%"=="y" goto MENU
+
+echo.
+echo Opening File Explorer to search media files...
+echo Please manually review and delete unauthorized files.
+echo.
+start explorer "C:\Users\"
+echo.
+pause
+goto MENU
+
+:RDP_USERS
+cls
+echo ============================================================
+echo        CONFIGURE REMOTE DESKTOP USERS
+echo ============================================================
+echo.
+echo This adds authorized users to the Remote Desktop Users group.
+echo.
+
+:RDP_USER_LOOP
+set /p rdpuser="Enter username to add to RDP Users ^(or press Enter to skip^): "
+if "%rdpuser%"=="" goto MENU
+
+net localgroup "Remote Desktop Users" "!rdpuser!" /add >nul 2>&1
+if !errorlevel! equ 0 (
+    echo [SUCCESS] Added !rdpuser! to Remote Desktop Users
+) else (
+    echo [INFO] !rdpuser! already in group or error occurred
+)
+
+set /p addmore="Add another user? ^(y/n^): "
+if /i "%addmore%"=="y" goto RDP_USER_LOOP
+
+echo.
+echo [SUCCESS] Remote Desktop Users group updated
+pause
+goto MENU
+
 :RUN_ALL_CIS
 cls
 echo ============================================================
-echo    RUN ALL CIS LEVEL 1 FIXES (FULLY AUTOMATED)
+echo    RUN ALL CIS LEVEL 1 FIXES ^(FULLY AUTOMATED^)
 echo ============================================================
 echo.
 echo This will apply all CIS Level 1 recommendations without prompts!
@@ -834,7 +1007,7 @@ echo ============================================================
 echo.
 echo REMAINING MANUAL TASKS:
 echo  1. Update Windows via Settings
-echo  2. Update Notepad++
+echo  2. Update Notepad++ to latest version
 echo  3. Review and confirm authorized users
 echo  4. Review and confirm authorized admins
 echo  5. Document renamed admin/guest accounts
@@ -850,7 +1023,9 @@ echo        EXPORT SYSTEM AUDIT REPORT
 echo ============================================================
 echo.
 
-set filename=CIS_Audit_Report_%date:~-4%-%date:~-10,2%-%date:~-7,2%_%time:~0,2%-%time:~3,2%.txt
+for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c-%%a-%%b)
+for /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set mytime=%%a-%%b)
+set filename=CIS_Audit_Report_%mydate%_%mytime%.txt
 
 echo Generating audit report: %filename%
 echo.
