@@ -1,0 +1,636 @@
+#!/bin/bash
+# CyberPatriot Ubuntu 24.04 LTS Security Hardening Script
+# Comprehensive script combining CIS standards and competition best practices
+# Run as root: sudo bash script.sh
+
+set -euo pipefail  # Exit on error, undefined vars, pipe failures
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+startTime=$(date +"%s")
+LOGFILE="$HOME/Desktop/Security_Script_$(date +%Y%m%d_%H%M%S).log"
+BACKUP_DIR="$HOME/Desktop/backups"
+LOG_DIR="$HOME/Desktop/logs"
+
+# Logging functions
+printTime() {
+    endTime=$(date +"%s")
+    diffTime=$((endTime - startTime))
+    timestamp=$(printf "%02d:%02d" $((diffTime / 60)) $((diffTime % 60)))
+    echo -e "${timestamp} -- $1" | tee -a "$LOGFILE"
+}
+
+printSection() {
+    echo -e "\n${BLUE}========================================${NC}"
+    echo -e "${BLUE}$1${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    printTime "SECTION: $1"
+}
+
+printStatus() {
+    echo -e "${GREEN}[+]${NC} $1"
+    printTime "$1"
+}
+
+printWarning() {
+    echo -e "${YELLOW}[!]${NC} $1"
+    printTime "WARNING: $1"
+}
+
+printError() {
+    echo -e "${RED}[-]${NC} $1"
+    printTime "ERROR: $1"
+}
+
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
+    echo -e "${RED}This script must be run as root${NC}"
+    echo "Usage: sudo bash $0"
+    exit 1
+fi
+
+# Create directories
+mkdir -p "$BACKUP_DIR" "$LOG_DIR"
+chmod 700 "$BACKUP_DIR" "$LOG_DIR"
+
+# Backup function
+backup_file() {
+    if [[ -f "$1" ]]; then
+        local filename=$(basename "$1")
+        cp "$1" "$BACKUP_DIR/${filename}.$(date +%Y%m%d_%H%M%S).backup" 2>/dev/null
+        printStatus "Backed up: $1"
+    fi
+}
+
+# ============================================
+# INITIAL WARNINGS AND CHECKS
+# ============================================
+clear
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}CyberPatriot Ubuntu 24.04 Security Script${NC}"
+echo -e "${GREEN}========================================${NC}\n"
+
+echo -e "${RED}CRITICAL WARNINGS:${NC}"
+echo "1. Have you READ THE README file completely?"
+echo "2. Have you COMPLETED ALL FORENSICS QUESTIONS?"
+echo "3. Have you noted all authorized users and services?"
+echo "4. Do you have console/physical access if SSH breaks?"
+echo ""
+echo -e "${YELLOW}This script will make significant system changes!${NC}"
+echo ""
+read -p "Type 'YES' in all caps to continue: " confirm
+
+if [[ "$confirm" != "YES" ]]; then
+    echo -e "${RED}Aborted by user.${NC}"
+    exit 1
+fi
+
+printTime "Script started with user confirmation."
+
+# ============================================
+# FORENSICS CHECKPOINT
+# ============================================
+printSection "FORENSICS CHECKPOINT"
+echo -e "${RED}STOP! Have you answered ALL forensics questions?${NC}"
+echo "Once you continue, system changes may destroy forensics evidence!"
+echo ""
+read -p "Have you completed ALL forensics questions? (yes/no): " forensicsDone
+
+if [[ "$forensicsDone" != "yes" ]]; then
+    echo -e "${RED}Complete forensics questions first. Exiting.${NC}"
+    exit 1
+fi
+printStatus "Forensics questions confirmed complete."
+
+# ============================================
+# BACKUP CRITICAL FILES
+# ============================================
+printSection "BACKING UP CRITICAL FILES"
+backup_file "/etc/passwd"
+backup_file "/etc/group"
+backup_file "/etc/shadow"
+backup_file "/etc/gshadow"
+backup_file "/etc/sudoers"
+backup_file "/etc/login.defs"
+backup_file "/etc/ssh/sshd_config"
+backup_file "/etc/gdm3/custom.conf"
+backup_file "/etc/pam.d/common-password"
+backup_file "/etc/pam.d/common-auth"
+backup_file "/etc/sysctl.conf"
+backup_file "/etc/host.conf"
+backup_file "/etc/apt/sources.list"
+
+# ============================================
+# SECURE APT REPOSITORIES (UBUNTU 24.04 ONLY)
+# ============================================
+printSection "SECURING APT REPOSITORIES"
+
+printStatus "Resetting apt sources to Ubuntu 24.04 LTS defaults..."
+
+# Detect Ubuntu version
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    printStatus "Detected $NAME $VERSION"
+    
+    # Verify this is Ubuntu 24.04
+    if [[ "$VERSION_ID" != "24.04" ]]; then
+        printError "This script is designed for Ubuntu 24.04 LTS only!"
+        printError "Detected version: $VERSION_ID"
+        printError "Skipping repository configuration for safety."
+    else
+        printStatus "Forcing repository reset to Ubuntu 24.04 LTS defaults..."
+        
+        # Write the default Ubuntu 24.04 sources.list
+        cat > /etc/apt/sources.list <<'EOF'
+# Ubuntu 24.04 LTS (Noble Numbat) Official Repositories
+
+# Main repositories
+deb http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu noble-updates main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu noble-backports main restricted universe multiverse
+
+# Security updates
+deb http://security.ubuntu.com/ubuntu noble-security main restricted universe multiverse
+
+# Proposed updates (typically disabled)
+# deb http://archive.ubuntu.com/ubuntu noble-proposed main restricted universe multiverse
+EOF
+        
+        chmod 644 /etc/apt/sources.list
+        printStatus "Repository reset complete for Ubuntu 24.04 LTS (Noble)"
+        printStatus "All repositories point to official Ubuntu Noble base"
+        
+        # Check for and warn about third-party repos
+        if [ -d /etc/apt/sources.list.d/ ]; then
+            # Backup the directory
+            cp -r /etc/apt/sources.list.d/ "$BACKUP_DIR/sources.list.d.backup" 2>/dev/null || true
+            
+            # List third-party repos for review
+            if [ "$(ls -A /etc/apt/sources.list.d/)" ]; then
+                printWarning "Third-party repositories found in /etc/apt/sources.list.d/:"
+                ls -1 /etc/apt/sources.list.d/ | tee "$LOG_DIR/third_party_repos.log"
+                printWarning "Review $LOG_DIR/third_party_repos.log and remove unauthorized repos manually."
+                
+                # Count potentially dangerous repos
+                REPO_COUNT=$(ls -1 /etc/apt/sources.list.d/*.list 2>/dev/null | wc -l)
+                if [[ $REPO_COUNT -gt 1 ]]; then
+                    printWarning "Found $REPO_COUNT third-party repository files. Review carefully!"
+                fi
+            fi
+        fi
+    fi
+else
+    printError "Could not detect Ubuntu version at /etc/os-release"
+    printError "This script requires Ubuntu 24.04 LTS"
+    printWarning "Skipping repository configuration for safety."
+fi
+
+# ============================================
+# USER MANAGEMENT
+# ============================================
+printSection "USER MANAGEMENT"
+
+# Disable Guest Account (GDM3 for Ubuntu 24.04)
+printStatus "Disabling guest account..."
+if [[ -f /etc/gdm3/custom.conf ]]; then
+    backup_file "/etc/gdm3/custom.conf"
+    if ! grep -q "disable-user-list=true" /etc/gdm3/custom.conf; then
+        sed -i '/\[security\]/a disable-user-list=true' /etc/gdm3/custom.conf 2>/dev/null || \
+        echo -e "[security]\ndisable-user-list=true" >> /etc/gdm3/custom.conf
+    fi
+    if ! grep -q "allow-guest=false" /etc/gdm3/custom.conf; then
+        sed -i '/\[security\]/a allow-guest=false' /etc/gdm3/custom.conf 2>/dev/null || \
+        sed -i '/disable-user-list=true/a allow-guest=false' /etc/gdm3/custom.conf 2>/dev/null
+    fi
+    printStatus "Guest account disabled in GDM3."
+fi
+
+# Check for unauthorized UID 0 accounts
+printStatus "Checking for unauthorized UID 0 accounts..."
+awk -F: '($3 == "0") {print}' /etc/passwd > "$LOG_DIR/uid_0_accounts.log"
+uid0count=$(awk -F: '($3 == "0") {print}' /etc/passwd | wc -l)
+if [[ $uid0count -gt 1 ]]; then
+    printWarning "Multiple UID 0 accounts found! Check $LOG_DIR/uid_0_accounts.log"
+    cat "$LOG_DIR/uid_0_accounts.log"
+else
+    printStatus "UID 0 correctly set to root only."
+fi
+
+# User management prompt
+echo -e "\n${YELLOW}User Account Management:${NC}"
+echo "Enter authorized usernames (space-separated):"
+read -a authorizedUsers
+
+echo "Enter authorized ADMIN usernames (space-separated):"
+read -a authorizedAdmins
+
+# Get all human users (UID >= 1000)
+allUsers=$(awk -F: '$3 >= 1000 && $3 < 65534 {print $1}' /etc/passwd)
+
+for user in $allUsers; do
+    if [[ ! " ${authorizedUsers[@]} " =~ " ${user} " ]]; then
+        echo -e "${RED}Unauthorized user found: $user${NC}"
+        read -p "Delete $user? (yes/no): " deleteUser
+        if [[ "$deleteUser" == "yes" ]]; then
+            userdel -r "$user" 2>/dev/null || printWarning "Could not fully remove $user"
+            groupdel "$user" 2>/dev/null || true
+            printStatus "Deleted unauthorized user: $user"
+        fi
+    else
+        # User is authorized, check admin status
+        if [[ " ${authorizedAdmins[@]} " =~ " ${user} " ]]; then
+            usermod -aG sudo,adm "$user" 2>/dev/null || printWarning "Could not add $user to admin groups"
+            printStatus "$user set as administrator."
+        else
+            # Remove from admin groups
+            for group in sudo admin adm lpadmin sambashare; do
+                if groups "$user" 2>/dev/null | grep -q "\b$group\b"; then
+                    gpasswd -d "$user" "$group" 2>/dev/null || printWarning "Could not remove $user from $group"
+                fi
+            done
+            printStatus "$user set as standard user (admin privileges removed if present)."
+        fi
+    fi
+done
+
+# Check /etc/sudoers.d for backdoors
+printStatus "Checking /etc/sudoers.d for unauthorized sudo access..."
+ls -la /etc/sudoers.d/ > "$LOG_DIR/sudoers_d_contents.log"
+if [[ $(ls -A /etc/sudoers.d/ 2>/dev/null | wc -l) -gt 0 ]]; then
+    printWarning "Files found in /etc/sudoers.d - review for unauthorized access:"
+    ls /etc/sudoers.d/
+fi
+
+# Check group memberships
+printStatus "Auditing admin group memberships..."
+grep -E 'sudo|admin' /etc/group > "$LOG_DIR/admin_groups.log"
+echo -e "${YELLOW}Current sudo/admin group members:${NC}"
+cat "$LOG_DIR/admin_groups.log"
+
+# ============================================
+# PASSWORD POLICIES
+# ============================================
+printSection "CONFIGURING PASSWORD POLICIES"
+
+# Configure /etc/login.defs
+backup_file "/etc/login.defs"
+printStatus "Setting password aging policies..."
+sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS   90/' /etc/login.defs
+sed -i 's/^PASS_MIN_DAYS.*/PASS_MIN_DAYS   7/' /etc/login.defs
+sed -i 's/^PASS_WARN_AGE.*/PASS_WARN_AGE   14/' /etc/login.defs
+grep -q "^PASS_MIN_LEN" /etc/login.defs && sed -i 's/^PASS_MIN_LEN.*/PASS_MIN_LEN   10/' /etc/login.defs || echo "PASS_MIN_LEN   10" >> /etc/login.defs
+printStatus "Password aging: max 90 days, min 7 days, warn 14 days, min length 10."
+
+# Install password quality libraries
+printStatus "Installing password quality libraries..."
+apt-get install -y libpam-pwquality 2>/dev/null || true
+
+# Configure PAM password requirements
+backup_file "/etc/pam.d/common-password"
+printStatus "Configuring PAM password policies..."
+
+# Configure pwquality for Ubuntu 24.04
+if [[ -f /etc/security/pwquality.conf ]]; then
+    backup_file "/etc/security/pwquality.conf"
+    sed -i 's/^# minlen =.*/minlen = 10/' /etc/security/pwquality.conf
+    sed -i 's/^# dcredit =.*/dcredit = -1/' /etc/security/pwquality.conf
+    sed -i 's/^# ucredit =.*/ucredit = -1/' /etc/security/pwquality.conf
+    sed -i 's/^# lcredit =.*/lcredit = -1/' /etc/security/pwquality.conf
+    sed -i 's/^# ocredit =.*/ocredit = -1/' /etc/security/pwquality.conf
+    printStatus "Password complexity configured via pwquality.conf"
+fi
+
+# Set password history in pam_unix line
+if grep -q "pam_unix.so" /etc/pam.d/common-password; then
+    sed -i 's/remember=[0-9]*//g' /etc/pam.d/common-password
+    sed -i '/pam_unix.so/ s/$/ remember=5/' /etc/pam.d/common-password
+    printStatus "Password history: 5 previous passwords"
+fi
+
+# Remove nullok (disable empty passwords)
+sed -i 's/nullok_secure//g' /etc/pam.d/common-auth
+sed -i 's/nullok//g' /etc/pam.d/common-auth
+printStatus "Null password authentication disabled."
+
+# Account Lockout Policy with pam_faillock
+backup_file "/etc/pam.d/common-auth"
+printStatus "Configuring account lockout policy..."
+
+# Configure faillock in /etc/security/faillock.conf
+if [[ -f /etc/security/faillock.conf ]]; then
+    backup_file "/etc/security/faillock.conf"
+    sed -i 's/^# deny =.*/deny = 5/' /etc/security/faillock.conf
+    sed -i 's/^# unlock_time =.*/unlock_time = 1800/' /etc/security/faillock.conf
+    sed -i 's/^# fail_interval =.*/fail_interval = 900/' /etc/security/faillock.conf
+    printStatus "Faillock configured: 5 attempts, 30 min lockout"
+fi
+
+# Apply password policies to existing users
+printStatus "Applying password aging to all users..."
+for user in "${authorizedUsers[@]}"; do
+    chage -M 90 -m 7 -W 14 "$user" 2>/dev/null || true
+    printStatus "Password aging applied to: $user"
+done
+
+# Offer to change passwords
+echo -e "\n${YELLOW}Password Management:${NC}"
+read -p "Set all user passwords to 'CyberPatriot2024!' ? (yes/no): " changePW
+if [[ "$changePW" == "yes" ]]; then
+    for user in "${authorizedUsers[@]}"; do
+        echo -e "CyberPatriot2024!\nCyberPatriot2024!" | passwd "$user" 2>/dev/null
+        printStatus "Password set for: $user"
+    done
+fi
+
+# ============================================
+# KERNEL HARDENING
+# ============================================
+printSection "KERNEL AND NETWORK SECURITY"
+
+backup_file "/etc/sysctl.conf"
+
+# Enable ASLR (Address Space Layout Randomization)
+printStatus "Enabling ASLR..."
+if grep -q "kernel.randomize_va_space" /etc/sysctl.conf; then
+    sed -i 's/kernel.randomize_va_space=.*/kernel.randomize_va_space=2/' /etc/sysctl.conf
+else
+    echo "kernel.randomize_va_space=2" >> /etc/sysctl.conf
+fi
+
+# Enable SYN cookie protection
+printStatus "Enabling TCP SYN cookie protection..."
+if grep -q "net.ipv4.tcp_syncookies" /etc/sysctl.conf; then
+    sed -i 's/net.ipv4.tcp_syncookies=.*/net.ipv4.tcp_syncookies=1/' /etc/sysctl.conf
+else
+    echo "net.ipv4.tcp_syncookies=1" >> /etc/sysctl.conf
+fi
+
+# Disable IP forwarding
+printStatus "Disabling IP forwarding..."
+if grep -q "net.ipv4.ip_forward" /etc/sysctl.conf; then
+    sed -i 's/net.ipv4.ip_forward=.*/net.ipv4.ip_forward=0/' /etc/sysctl.conf
+else
+    echo "net.ipv4.ip_forward=0" >> /etc/sysctl.conf
+fi
+
+# Disable IPv6 (optional)
+read -p "Disable IPv6? (yes/no): " disableIPv6
+if [[ "$disableIPv6" == "yes" ]]; then
+    if ! grep -q "net.ipv6.conf.all.disable_ipv6" /etc/sysctl.conf; then
+        echo "net.ipv6.conf.all.disable_ipv6=1" >> /etc/sysctl.conf
+        echo "net.ipv6.conf.default.disable_ipv6=1" >> /etc/sysctl.conf
+        echo "net.ipv6.conf.lo.disable_ipv6=1" >> /etc/sysctl.conf
+    fi
+    printStatus "IPv6 disabled."
+fi
+
+# Prevent IP spoofing
+backup_file "/etc/host.conf"
+if ! grep -q "nospoof" /etc/host.conf; then
+    echo "nospoof on" >> /etc/host.conf
+fi
+printStatus "IP spoofing prevention enabled."
+
+# Apply all sysctl changes
+sysctl --system
+printStatus "Kernel security settings applied."
+
+# Verify ASLR is enabled
+printStatus "Verifying ASLR..."
+ASLR_VALUE=$(sysctl kernel.randomize_va_space | awk '{print $3}')
+if [[ "$ASLR_VALUE" == "2" ]]; then
+    printStatus "✓ ASLR is enabled (value: 2)"
+    echo "ASLR Status: ENABLED (value: 2)" > "$LOG_DIR/aslr_status.log"
+else
+    printWarning "ASLR may not be properly enabled (value: $ASLR_VALUE)"
+    echo "ASLR Status: Value is $ASLR_VALUE (should be 2)" > "$LOG_DIR/aslr_status.log"
+fi
+
+# ============================================
+# FIREWALL CONFIGURATION
+# ============================================
+printSection "CONFIGURING UFW FIREWALL"
+
+apt-get install -y ufw
+ufw --force enable
+ufw default deny incoming
+ufw default allow outgoing
+ufw logging on
+printStatus "UFW firewall enabled: deny incoming, allow outgoing, logging on."
+
+# ============================================
+# SECURE ROOT ACCOUNT
+# ============================================
+printSection "SECURING ROOT ACCOUNT"
+
+passwd -l root
+printStatus "Root account password locked."
+
+# ============================================
+# SERVICE CONFIGURATION
+# ============================================
+printSection "SERVICE MANAGEMENT"
+
+# Log current listening ports BEFORE changes
+ss -tulpn > "$LOG_DIR/listening_ports_before.log"
+printStatus "Current listening ports logged."
+
+echo -e "\n${YELLOW}Service Configuration:${NC}"
+read -p "Keep SSH enabled? (yes/no): " sshYN
+read -p "Keep Apache/HTTP enabled? (yes/no): " httpYN
+read -p "Keep MySQL enabled? (yes/no): " dbYN
+read -p "Keep Samba enabled? (yes/no): " sambaYN
+read -p "Keep FTP enabled? (yes/no): " ftpYN
+
+# SSH Configuration
+if [[ "$sshYN" == "yes" ]]; then
+    printStatus "Configuring SSH..."
+    backup_file "/etc/ssh/sshd_config"
+    
+    # CIS-compliant SSH hardening
+    sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+    sed -i 's/^#*X11Forwarding.*/X11Forwarding no/' /etc/ssh/sshd_config
+    sed -i 's/^#*PermitEmptyPasswords.*/PermitEmptyPasswords no/' /etc/ssh/sshd_config
+    sed -i 's/^#*MaxAuthTries.*/MaxAuthTries 4/' /etc/ssh/sshd_config
+    sed -i 's/^#*ClientAliveInterval.*/ClientAliveInterval 300/' /etc/ssh/sshd_config
+    sed -i 's/^#*ClientAliveCountMax.*/ClientAliveCountMax 2/' /etc/ssh/sshd_config
+    sed -i 's/^#*LoginGraceTime.*/LoginGraceTime 60/' /etc/ssh/sshd_config
+    sed -i 's/^#*PermitUserEnvironment.*/PermitUserEnvironment no/' /etc/ssh/sshd_config
+    
+    grep -q "^LoginGraceTime" /etc/ssh/sshd_config || echo "LoginGraceTime 60" >> /etc/ssh/sshd_config
+    
+    systemctl restart sshd 2>/dev/null || systemctl restart ssh
+    ufw allow ssh
+    printStatus "SSH hardened and secured. Root login disabled."
+else
+    ufw deny ssh
+    systemctl stop ssh 2>/dev/null || true
+    systemctl disable ssh 2>/dev/null || true
+    printStatus "SSH disabled."
+fi
+
+# Apache Configuration
+if [[ "$httpYN" == "yes" ]]; then
+    printStatus "Configuring Apache..."
+    backup_file "/etc/apache2/apache2.conf"
+    
+    ufw allow 80/tcp
+    ufw allow 443/tcp
+    
+    if [[ -f /etc/apache2/apache2.conf ]]; then
+        grep -q "ServerTokens" /etc/apache2/apache2.conf || echo "ServerTokens Prod" >> /etc/apache2/apache2.conf
+        grep -q "ServerSignature" /etc/apache2/apache2.conf || echo "ServerSignature Off" >> /etc/apache2/apache2.conf
+        grep -q "TraceEnable" /etc/apache2/apache2.conf || echo "TraceEnable Off" >> /etc/apache2/apache2.conf
+    fi
+    
+    systemctl restart apache2 2>/dev/null || true
+    printStatus "Apache secured and restarted."
+else
+    ufw deny 80/tcp
+    ufw deny 443/tcp
+    systemctl stop apache2 2>/dev/null || true
+    systemctl disable apache2 2>/dev/null || true
+    printStatus "Apache disabled."
+fi
+
+# MySQL Configuration
+if [[ "$dbYN" == "yes" ]]; then
+    printStatus "MySQL allowed."
+    ufw allow 3306/tcp
+    printWarning "MANUAL STEP: Run 'mysql_secure_installation' after script completes!"
+else
+    ufw deny 3306/tcp
+    systemctl stop mysql 2>/dev/null || true
+    systemctl disable mysql 2>/dev/null || true
+    printStatus "MySQL disabled."
+fi
+
+# Samba Configuration
+if [[ "$sambaYN" == "yes" ]]; then
+    printStatus "Samba allowed."
+    ufw allow 139/tcp 2>/dev/null || true
+    ufw allow 445/tcp 2>/dev/null || true
+    ufw allow 137/udp 2>/dev/null || true
+    ufw allow 138/udp 2>/dev/null || true
+    printWarning "MANUAL STEP: Configure Samba in /etc/samba/smb.conf"
+else
+    ufw deny 139/tcp 2>/dev/null || true
+    ufw deny 445/tcp 2>/dev/null || true
+    ufw deny 137/udp 2>/dev/null || true
+    ufw deny 138/udp 2>/dev/null || true
+    systemctl stop smbd 2>/dev/null || true
+    systemctl disable smbd 2>/dev/null || true
+    printStatus "Samba disabled."
+fi
+
+# FTP Configuration
+if [[ "$ftpYN" == "yes" ]]; then
+    printStatus "FTP allowed."
+    ufw allow ftp
+    printWarning "MANUAL STEP: Secure FTP configuration needed!"
+else
+    ufw deny ftp
+    systemctl stop vsftpd 2>/dev/null || true
+    systemctl disable vsftpd 2>/dev/null || true
+    printStatus "FTP disabled."
+fi
+
+# Disable other unnecessary services
+printStatus "Disabling potentially unnecessary services..."
+for service in nginx squid telnet.socket rsh.socket; do
+    if systemctl is-active --quiet "$service" 2>/dev/null; then
+        systemctl disable --now "$service" 2>/dev/null
+        printStatus "Disabled: $service"
+    fi
+done
+
+# ============================================
+# REMOVE PROHIBITED SOFTWARE
+# ============================================
+printSection "REMOVING PROHIBITED SOFTWARE"
+
+# Comprehensive hacking tools list
+hackingTools=(
+    "john" "john-data" "hydra" "hydra-gtk" "aircrack-ng" "fcrackzip"
+    "lcrack" "ophcrack" "ophcrack-cli" "pdfcrack" "pyrit" "rarcrack"
+    "sipcrack" "irpas" "logkeys" "zeitgeist-core" "zeitgeist" "nmap" "zenmap"
+    "wireshark" "tshark" "ettercap" "dsniff" "nikto" "sqlmap"
+    "netcat" "netcat-openbsd" "netcat-traditional" "ncat" "pnetcat"
+    "socat" "telnet" "telnetd" "rsh-server" "rsh-client" "doona" "xprobe"
+)
+
+printStatus "Scanning for and removing hacking tools..."
+for tool in "${hackingTools[@]}"; do
+    if dpkg -l 2>/dev/null | grep -qw "^ii.*$tool"; then
+        apt-get purge -y "$tool" 2>/dev/null || true
+        printStatus "Removed: $tool"
+    fi
+done
+
+# Log any remaining suspicious packages
+dpkg -l | egrep -i "crack|hack" | grep -v "libcrack2\|cracklib" > "$LOG_DIR/potential_hacking_tools.log" || true
+printStatus "Hacking tools scan complete. Check $LOG_DIR/potential_hacking_tools.log"
+
+# ============================================
+# PROHIBITED FILES SEARCH AND REMOVAL
+# ============================================
+printSection "SEARCHING FOR AND REMOVING PROHIBITED FILES"
+
+printStatus "Scanning for prohibited media files..."
+echo "This may take several minutes..."
+
+# Update locate database first
+printStatus "Updating file database..."
+updatedb 2>/dev/null || printWarning "Could not update locate database"
+
+# Scan for OGG files
+printStatus "Searching for prohibited OGG files..."
+locate '*.ogg' 2>/dev/null > "$LOG_DIR/ogg_files_found.log" || touch "$LOG_DIR/ogg_files_found.log"
+oggCount=$(wc -l < "$LOG_DIR/ogg_files_found.log")
+if [[ $oggCount -gt 0 ]]; then
+    printWarning "Found $oggCount OGG files."
+    
+    read -p "Delete all OGG files? (yes/no): " deleteOgg
+    if [[ "$deleteOgg" == "yes" ]]; then
+        while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+                rm -f "$file" 2>/dev/null && printStatus "Deleted: $file"
+            fi
+        done < "$LOG_DIR/ogg_files_found.log"
+        printStatus "All OGG files removed."
+    fi
+else
+    printStatus "No OGG files found."
+fi
+
+# Scan for ZIP archives
+printStatus "Searching for ZIP archives..."
+locate '*.zip' 2>/dev/null > "$LOG_DIR/zip_files_found.log" || touch "$LOG_DIR/zip_files_found.log"
+zipCount=$(wc -l < "$LOG_DIR/zip_files_found.log")
+if [[ $zipCount -gt 0 ]]; then
+    printWarning "Found $zipCount ZIP files. Check $LOG_DIR/zip_files_found.log"
+    
+    grep -iE 'pyrdp|exploit|hack|crack|metasploit' "$LOG_DIR/zip_files_found.log" > "$LOG_DIR/suspicious_zips.log" 2>/dev/null || true
+    if [[ -s "$LOG_DIR/suspicious_zips.log" ]]; then
+        printWarning "Suspicious ZIP files found:"
+        cat "$LOG_DIR/suspicious_zips.log"
+    fi
+fi
+
+# Scan for all media files
+find /home -type f \( \
+    -iname "*.mp3" -o -iname "*.mp4" -o -iname "*.avi" -o -iname "*.mkv" \
+    -o -iname "*.mov" -o -iname "*.wav" -o -iname "*.flac" -o -iname "*.ogg" \
+    -o -iname "*.wmv" -o -iname "*.m4a" -o -iname "*.aac" \
+\) 2>/dev/null > "$LOG_DIR/media_files_found.log" || true
+
+mediaCount=$(wc -l < "$LOG_DIR/media_files_found.log")
+printStatus "Found $mediaCount total media files. Check $LOG_DIR/media_files_found.log"
+
+# Scan for suspicious files
+find /home -type f \( \
